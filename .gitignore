@@ -1,0 +1,50 @@
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+env.bak/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Tooling & metadata
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+coverage/
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# IDE / editor files
+.idea/
+.vscode/
+.cursor/
+
+# Build & distribution artifacts
+build/
+dist/
+*.egg-info/
+
+# Node / frontend (if present)
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+
