@@ -1,0 +1,17 @@
+.dashboard-layout {
+  min-height: 100vh;
+}
+
+.dashboard-main {
+  margin-left: 250px;
+  margin-top: 70px;
+  padding: var(--space-6);
+  min-height: calc(100vh - 70px);
+  background-color: var(--cream);
+}
+
+@media (max-width: 768px) {
+  .dashboard-main {
+    margin-left: 0;
+  }
+}
