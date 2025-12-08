@@ -97,7 +97,9 @@ const Pipelines = () => {
       }));
 
       // Trigger execution
-      const result = await pipelineExecutionService.execute(configId);
+      const result = await pipelineExecutionService.execute(configId, {
+        dagId: 'cryvex_dynamic' 
+      });
       
       // Update with execution ID
       setExecutingPipelines(prev => ({

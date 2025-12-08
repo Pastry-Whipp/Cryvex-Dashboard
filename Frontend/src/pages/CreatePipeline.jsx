@@ -7,10 +7,10 @@ import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Modal from '../components/common/Modal';
 import Alert from '../components/common/Alert';
-import { 
+import {
   ArrowLeft,
   ArrowRight,
-  Check, 
+  Check,
   Plus,
   Trash2,
   Upload,
@@ -53,7 +53,9 @@ const CreatePipeline = () => {
     blockchain: {
       enabled: true,
       network: 'ganache',
-      rpcUrl: 'http://localhost:8545'
+      rpcUrl: 'http://localhost:8545',
+      privateKey: '',
+      contractAddress: ''
     },
     executionMode: 'parallel',
     stopOnError: false,
@@ -76,20 +78,32 @@ const CreatePipeline = () => {
   ];
 
   const transformationOptions = [
+    { value: 'trim', label: 'Trim Whitespace' },
     { value: 'lowercase', label: 'Convert to Lowercase' },
     { value: 'uppercase', label: 'Convert to Uppercase' },
-    { value: 'trim', label: 'Trim Whitespace' },
-    { value: 'round', label: 'Round Numbers' }
+    { value: 'replace', label: 'Replace Text' },
+    { value: 'remove_special_chars', label: 'Remove Special Characters' },
+    { value: 'prefix', label: 'Add Prefix' },
+    { value: 'suffix', label: 'Add Suffix' },
+    { value: 'fill_null', label: 'Fill Null Values' },
+    { value: 'remove_duplicates', label: 'Remove Duplicates' },
+    { value: 'convert_type', label: 'Convert Data Type' },
+    { value: 'round', label: 'Round Numbers' },
+    { value: 'date_format', label: 'Format Date' }
   ];
 
   const validationOptions = [
     { value: 'not_null', label: 'Not Null', needsValue: false },
-    { value: 'email', label: 'Email Format', needsValue: false },
+    { value: 'unique', label: 'Unique Values', needsValue: false },
     { value: 'min_value', label: 'Minimum Value', needsValue: true },
     { value: 'max_value', label: 'Maximum Value', needsValue: true },
     { value: 'min_length', label: 'Minimum Length', needsValue: true },
     { value: 'max_length', label: 'Maximum Length', needsValue: true },
-    { value: 'in_list', label: 'In List', needsValue: true, isList: true }
+    { value: 'regex', label: 'Regex Pattern', needsValue: true },
+    { value: 'in_list', label: 'In List', needsValue: true, isList: true },
+    { value: 'email', label: 'Email Format', needsValue: false },
+    { value: 'phone', label: 'Phone Number', needsValue: false },
+    { value: 'date_range', label: 'Date Range', needsValue: true }
   ];
 
   const columnTypes = [
@@ -183,19 +197,19 @@ const CreatePipeline = () => {
           primaryKey: col.primary_key === true || col.primaryKey === true,
           maxLength: col.max_length || col.maxLength || null
         };
-        
+
         // Filter out empty names
         if (!column.name || column.name.trim() === '') {
           return null;
         }
-        
+
         return column;
       }).filter(col => col !== null); // Remove null entries
 
       // Update the table with the uploaded schema
       const newTables = [...formData.tables];
       newTables[tableIndex].schema.columns = columns;
-      
+
       // Update table name if provided in schema
       if (schemaData.table_name) {
         newTables[tableIndex].name = schemaData.table_name;
@@ -203,15 +217,15 @@ const CreatePipeline = () => {
 
       // Update domain if provided in schema
       if (schemaData.domain) {
-        setFormData({ 
-          ...formData, 
+        setFormData({
+          ...formData,
           domain: schemaData.domain,
-          tables: newTables 
+          tables: newTables
         });
       } else {
         setFormData({ ...formData, tables: newTables });
       }
-      
+
       // Show success message
       setShowSuccessAlert(true);
       setTimeout(() => setShowSuccessAlert(false), 3000);
@@ -320,7 +334,7 @@ const CreatePipeline = () => {
       });
 
       setShowSuccessAlert(true);
-      
+
       // Navigate back to pipelines after 2 seconds
       setTimeout(() => {
         navigate('/pipelines');
@@ -328,12 +342,12 @@ const CreatePipeline = () => {
     } catch (error) {
       console.error('Error saving pipeline:', error);
       console.error('Error response:', error.response?.data);
-      
+
       let errorMessage = 'Failed to save pipeline. Please try again.';
-      
+
       if (error.response?.data) {
         const errorData = error.response.data;
-        
+
         // Handle FastAPI validation errors
         if (Array.isArray(errorData.detail)) {
           const validationErrors = errorData.detail.map(err => {
@@ -344,14 +358,14 @@ const CreatePipeline = () => {
         } else if (typeof errorData.detail === 'string') {
           errorMessage = errorData.detail;
         } else if (errorData.message) {
-          errorMessage = typeof errorData.message === 'string' 
-            ? errorData.message 
+          errorMessage = typeof errorData.message === 'string'
+            ? errorData.message
             : JSON.stringify(errorData.message);
         }
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       setSaveError(errorMessage);
     } finally {
       setIsSaving(false);
@@ -388,9 +402,8 @@ const CreatePipeline = () => {
           {steps.map((step) => (
             <div
               key={step.number}
-              className={`step ${currentStep === step.number ? 'active' : ''} ${
-                currentStep > step.number ? 'completed' : ''
-              }`}
+              className={`step ${currentStep === step.number ? 'active' : ''} ${currentStep > step.number ? 'completed' : ''
+                }`}
             >
               <div className="step-icon">
                 {currentStep > step.number ? (
@@ -527,7 +540,7 @@ const CreatePipeline = () => {
                     <span>Using Ganache for local blockchain verification</span>
                   </div>
                   <div className="form-grid">
-                    <div className="checkbox-wrapper">
+                    <div className="checkbox-wrapper full-width">
                       <label className="checkbox-label">
                         <input
                           type="checkbox"
@@ -544,6 +557,29 @@ const CreatePipeline = () => {
                     </div>
                     <Input label="Network" value={formData.blockchain.network} disabled />
                     <Input label="RPC URL" value={formData.blockchain.rpcUrl} disabled />
+                    <Input
+                      label="Private Key"
+                      type="password"
+                      placeholder="Enter your blockchain private key"
+                      value={formData.blockchain.privateKey}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          blockchain: { ...formData.blockchain, privateKey: e.target.value }
+                        })
+                      }
+                    />
+                    <Input
+                      label="Contract Address"
+                      placeholder="Enter smart contract address"
+                      value={formData.blockchain.contractAddress}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          blockchain: { ...formData.blockchain, contractAddress: e.target.value }
+                        })
+                      }
+                    />
                   </div>
                 </div>
 
@@ -557,9 +593,8 @@ const CreatePipeline = () => {
                     {executionModeOptions.map((mode) => (
                       <div
                         key={mode.value}
-                        className={`mode-option ${
-                          formData.executionMode === mode.value ? 'selected' : ''
-                        }`}
+                        className={`mode-option ${formData.executionMode === mode.value ? 'selected' : ''
+                          }`}
                         onClick={() => setFormData({ ...formData, executionMode: mode.value })}
                       >
                         <div className="mode-radio">
@@ -861,16 +896,16 @@ const CreatePipeline = () => {
                               </select>
                               {validationOptions.find((opt) => opt.value === validation.rule)
                                 ?.needsValue && (
-                                <input
-                                  type="text"
-                                  className="input-field compact"
-                                  placeholder="Value"
-                                  value={validation.value || ''}
-                                  onChange={(e) =>
-                                    handleValidationChange(index, vIndex, 'value', e.target.value)
-                                  }
-                                />
-                              )}
+                                  <input
+                                    type="text"
+                                    className="input-field compact"
+                                    placeholder="Value"
+                                    value={validation.value || ''}
+                                    onChange={(e) =>
+                                      handleValidationChange(index, vIndex, 'value', e.target.value)
+                                    }
+                                  />
+                                )}
                               <button
                                 className="icon-button"
                                 onClick={() => handleRemoveValidation(index, vIndex)}
@@ -983,8 +1018,8 @@ const CreatePipeline = () => {
               <ArrowRight size={20} />
             </Button>
           ) : (
-            <Button 
-              variant="primary" 
+            <Button
+              variant="primary"
               onClick={handleSaveAndStart}
               disabled={isSaving}
             >
@@ -1033,9 +1068,9 @@ const CreatePipeline = () => {
                       <Upload size={18} />
                       Upload Schema
                     </Button>
-                    <Button 
-                      variant="primary" 
-                      size="sm" 
+                    <Button
+                      variant="primary"
+                      size="sm"
                       onClick={() => handleAddColumn(currentTableIndex)}
                       className="add-column-btn"
                     >

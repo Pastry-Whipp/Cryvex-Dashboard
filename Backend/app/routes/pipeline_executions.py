@@ -33,7 +33,7 @@ def get_dag_id_from_config(config: PipelineConfig) -> str:
     """
     # Default naming convention - customize this based on your setup
     name_slug = config.name.lower().replace(' ', '_').replace('-', '_')
-    return f"cryvex_{name_slug}"
+    return f"cryvex_dynamic"
 
 
 @router.get("/airflow/health", response_model=AirflowHealthResponse)
