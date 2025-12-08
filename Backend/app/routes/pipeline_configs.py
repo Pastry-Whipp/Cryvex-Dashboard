@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
 import logging
 from app.database import get_db
 from app.models import User, PipelineConfig
+from app.models.audit_log import ActionType, EntityType
 from app.schemas.pipeline_config import (
     PipelineConfigCreate,
     PipelineConfigUpdate,
@@ -12,6 +13,7 @@ from app.schemas.pipeline_config import (
 )
 from app.dependencies import get_current_active_user
 from app.utils.file_manager import save_config_file, update_config_file, delete_config_file
+from app.services.audit_service import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/pipeline-configs", tags=["Pipeline Configs"])
 @router.post("", response_model=PipelineConfigResponse, status_code=status.HTTP_201_CREATED)
 def create_pipeline_config(
     config: PipelineConfigCreate,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -51,6 +54,18 @@ def create_pipeline_config(
     except Exception as e:
         logger.error(f"Error saving config file locally: {str(e)}")
         # Don't fail the request if file save fails, just log it
+    
+    # Log audit trail
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action_type=ActionType.CREATE,
+        entity_type=EntityType.PIPELINE_CONFIG,
+        entity_id=db_config.id,
+        entity_name=db_config.name,
+        details={"domain": db_config.domain, "version": db_config.version},
+        ip_address=request.client.host if request.client else None
+    )
     
     return db_config
 
@@ -97,6 +112,7 @@ def get_pipeline_config(
 def update_pipeline_config(
     config_id: int,
     config_update: PipelineConfigUpdate,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -134,12 +150,25 @@ def update_pipeline_config(
             logger.error(f"Error updating config file locally: {str(e)}")
             # Don't fail the request if file update fails, just log it
     
+    # Log audit trail
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action_type=ActionType.UPDATE,
+        entity_type=EntityType.PIPELINE_CONFIG,
+        entity_id=config.id,
+        entity_name=config.name,
+        details={"updated_fields": list(update_data.keys())},
+        ip_address=request.client.host if request.client else None
+    )
+    
     return config
 
 
 @router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_pipeline_config(
     config_id: int,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -156,6 +185,20 @@ def delete_pipeline_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Pipeline configuration not found"
         )
+    
+    # Store config name before deletion for audit log
+    config_name = config.name
+    
+    # Log audit trail before deletion
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action_type=ActionType.DELETE,
+        entity_type=EntityType.PIPELINE_CONFIG,
+        entity_id=config_id,
+        entity_name=config_name,
+        ip_address=request.client.host if request.client else None
+    )
     
     db.delete(config)
     db.commit()

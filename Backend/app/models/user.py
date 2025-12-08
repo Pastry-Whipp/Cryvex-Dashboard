@@ -20,6 +20,7 @@ class User(Base):
     # Relationships
     pipeline_configs = relationship("PipelineConfig", back_populates="user", cascade="all, delete-orphan")
     pipeline_executions = relationship("PipelineExecution", back_populates="user", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="user")
     
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"

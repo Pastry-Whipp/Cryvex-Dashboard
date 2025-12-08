@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -9,6 +9,7 @@ from app.database import get_db, SessionLocal
 from app.models.user import User
 from app.models.pipeline_config import PipelineConfig
 from app.models.pipeline_execution import PipelineExecution, ExecutionStatus
+from app.models.audit_log import ActionType, EntityType
 from app.schemas.pipeline_execution import (
     PipelineExecutionResponse,
     ExecutionTriggerRequest,
@@ -20,6 +21,7 @@ from app.schemas.pipeline_execution import (
 )
 from app.dependencies import get_current_active_user
 from app.services.airflow_service import airflow_service
+from app.services.audit_service import audit_service
 from app.config import settings
 
 router = APIRouter(prefix="/pipeline-executions", tags=["Pipeline Executions"])
@@ -95,7 +97,8 @@ async def list_available_dags(
 @router.post("/{config_id}/execute", response_model=ExecutionTriggerResponse)
 async def execute_pipeline(
     config_id: int,
-    request: Optional[ExecutionTriggerRequest] = None,
+    request: Request,
+    exec_request: Optional[ExecutionTriggerRequest] = None,
     background_tasks: BackgroundTasks = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -124,7 +127,7 @@ async def execute_pipeline(
         )
     
     # Determine the DAG ID
-    dag_id = request.dag_id if request and request.dag_id else get_dag_id_from_config(config)
+    dag_id = exec_request.dag_id if exec_request and exec_request.dag_id else get_dag_id_from_config(config)
     
     # Generate a unique run ID
     timestamp = datetime.now().strftime('%Y%m%dT%H%M%S')
@@ -154,8 +157,20 @@ async def execute_pipeline(
     }
     
     # Merge with any additional conf from request
-    if request and request.conf:
-        dag_conf.update(request.conf)
+    if exec_request and exec_request.conf:
+        dag_conf.update(exec_request.conf)
+    
+    # Log audit trail for execution trigger
+    audit_service.log_action(
+        db=db,
+        user_id=current_user.id,
+        action_type=ActionType.EXECUTE,
+        entity_type=EntityType.PIPELINE_EXECUTION,
+        entity_id=execution.id,
+        entity_name=config.name,
+        details={"dag_id": dag_id, "run_id": run_id},
+        ip_address=request.client.host if request.client else None
+    )
     
     # Trigger DAG in background
     if background_tasks:
@@ -209,6 +224,17 @@ async def trigger_dag_async(execution_id: int, dag_id: str, run_id: str, conf: d
             execution.completed_at = datetime.utcnow()
         
         db.commit()
+        
+        # Log status change in audit trail
+        audit_service.log_action(
+            db=db,
+            user_id=execution.user_id,
+            action_type=ActionType.STATUS_CHANGE,
+            entity_type=EntityType.PIPELINE_EXECUTION,
+            entity_id=execution.id,
+            entity_name=execution.pipeline_config.name if execution.pipeline_config else None,
+            details={"new_status": execution.status, "dag_id": dag_id}
+        )
         
     except Exception as e:
         logger.error(f"Error in trigger_dag_async: {e}")

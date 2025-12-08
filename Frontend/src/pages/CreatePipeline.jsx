@@ -61,14 +61,18 @@ const CreatePipeline = () => {
     stopOnError: false,
 
     // Step 3: Tables Configuration
-    tables: []
+    tables: [],
+
+    // Step 4: Derived Tables Configuration
+    derivedTables: []
   });
 
   const steps = [
     { number: 1, title: 'Project Info', icon: Info },
     { number: 2, title: 'Settings', icon: Settings },
     { number: 3, title: 'Tables', icon: Database },
-    { number: 4, title: 'Review', icon: Check }
+    { number: 4, title: 'Derived Tables', icon: FileJson },
+    { number: 5, title: 'Review', icon: Check }
   ];
 
   const domainOptions = ['banking', 'cryptocurrency', 'medical', 'ecommerce', 'logistics'];
@@ -108,6 +112,16 @@ const CreatePipeline = () => {
 
   const columnTypes = [
     'string', 'integer', 'decimal', 'date', 'datetime', 'boolean'
+  ];
+
+  const queryTypeOptions = [
+    { value: 'patient_analytics', label: 'Patient Analytics' },
+    { value: 'covid_analytics', label: 'COVID Analytics' },
+    { value: 'encounter_cost_analysis', label: 'Encounter Cost Analysis' },
+    { value: 'medication_cost_analysis', label: 'Medication Cost Analysis' },
+    { value: 'provider_analytics', label: 'Provider Analytics' },
+    { value: 'payer_coverage_analysis', label: 'Payer Coverage Analysis' },
+    { value: 'custom', label: 'Custom Query' }
   ];
 
   const handleAddTable = () => {
@@ -280,8 +294,36 @@ const CreatePipeline = () => {
     setFormData({ ...formData, tables: newTables });
   };
 
+  // Derived Tables Handlers
+  const handleAddDerivedTable = () => {
+    const newDerivedTable = {
+      name: '',
+      priority: 10 + formData.derivedTables.length,
+      dependsOn: [],
+      queryType: 'custom',
+      sqlQuery: '',
+      targetTableName: '',
+      ifExists: 'replace'
+    };
+    setFormData({
+      ...formData,
+      derivedTables: [...formData.derivedTables, newDerivedTable]
+    });
+  };
+
+  const handleRemoveDerivedTable = (index) => {
+    const newDerivedTables = formData.derivedTables.filter((_, i) => i !== index);
+    setFormData({ ...formData, derivedTables: newDerivedTables });
+  };
+
+  const handleDerivedTableChange = (index, field, value) => {
+    const newDerivedTables = [...formData.derivedTables];
+    newDerivedTables[index][field] = value;
+    setFormData({ ...formData, derivedTables: newDerivedTables });
+  };
+
   const nextStep = () => {
-    if (currentStep < 4) setCurrentStep(currentStep + 1);
+    if (currentStep < 5) setCurrentStep(currentStep + 1);
   };
 
   const prevStep = () => {
@@ -809,15 +851,33 @@ const CreatePipeline = () => {
                           </div>
                           {table.transformations.map((transform, tIndex) => (
                             <div key={tIndex} className="transform-row">
-                              <input
-                                type="text"
-                                className="input-field compact"
-                                placeholder="Column name"
-                                value={transform.column}
-                                onChange={(e) =>
-                                  handleTransformationChange(index, tIndex, 'column', e.target.value)
-                                }
-                              />
+                              {/* Column selector - dropdown if columns exist, text input otherwise */}
+                              {table.schema.columns.length > 0 ? (
+                                <select
+                                  className="input-field compact"
+                                  value={transform.column}
+                                  onChange={(e) =>
+                                    handleTransformationChange(index, tIndex, 'column', e.target.value)
+                                  }
+                                >
+                                  <option value="">Select column...</option>
+                                  {table.schema.columns.map((col, colIdx) => (
+                                    <option key={colIdx} value={col.name}>
+                                      {col.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  className="input-field compact"
+                                  placeholder="Column name"
+                                  value={transform.column}
+                                  onChange={(e) =>
+                                    handleTransformationChange(index, tIndex, 'column', e.target.value)
+                                  }
+                                />
+                              )}
                               <select
                                 className="input-field compact"
                                 value={transform.action}
@@ -872,15 +932,33 @@ const CreatePipeline = () => {
                           </div>
                           {table.validations.map((validation, vIndex) => (
                             <div key={vIndex} className="transform-row">
-                              <input
-                                type="text"
-                                className="input-field compact"
-                                placeholder="Column name"
-                                value={validation.column}
-                                onChange={(e) =>
-                                  handleValidationChange(index, vIndex, 'column', e.target.value)
-                                }
-                              />
+                              {/* Column selector - dropdown if columns exist, text input otherwise */}
+                              {table.schema.columns.length > 0 ? (
+                                <select
+                                  className="input-field compact"
+                                  value={validation.column}
+                                  onChange={(e) =>
+                                    handleValidationChange(index, vIndex, 'column', e.target.value)
+                                  }
+                                >
+                                  <option value="">Select column...</option>
+                                  {table.schema.columns.map((col, colIdx) => (
+                                    <option key={colIdx} value={col.name}>
+                                      {col.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  className="input-field compact"
+                                  placeholder="Column name"
+                                  value={validation.column}
+                                  onChange={(e) =>
+                                    handleValidationChange(index, vIndex, 'column', e.target.value)
+                                  }
+                                />
+                              )}
                               <select
                                 className="input-field compact"
                                 value={validation.rule}
@@ -923,8 +1001,179 @@ const CreatePipeline = () => {
             </div>
           )}
 
-          {/* Step 4: Review */}
+
+          {/* Step 4: Derived Tables */}
           {currentStep === 4 && (
+            <div className="step-card fade-in">
+              <div className="tables-header">
+                <div>
+                  <h2 className="section-title">Derived Tables Configuration</h2>
+                  <p className="section-subtitle">Create analytics tables from SQL queries (optional)</p>
+                </div>
+                <Button variant="primary" onClick={handleAddDerivedTable}>
+                  <Plus size={20} />
+                  Add Derived Table
+                </Button>
+              </div>
+
+              {formData.derivedTables.length === 0 ? (
+                <Card>
+                  <div className="empty-tables">
+                    <FileJson size={48} className="empty-icon" />
+                    <h3>No derived tables added</h3>
+                    <p>Derived tables are optional analytics tables created from SQL queries</p>
+                    <Button variant="outline" onClick={handleAddDerivedTable}>
+                      <Plus size={20} />
+                      Add Derived Table
+                    </Button>
+                  </div>
+                </Card>
+              ) : (
+                <div className="tables-list">
+                  {formData.derivedTables.map((derivedTable, index) => (
+                    <Card key={index} className="table-card derived-table-card">
+                      <div className="table-card-header">
+                        <div className="table-header-left">
+                          <Badge variant="success">Derived {index + 1}</Badge>
+                          <select
+                            className="input-field"
+                            value={derivedTable.name}
+                            onChange={(e) => handleDerivedTableChange(index, 'name', e.target.value)}
+                          >
+                            <option value="">Select table name...</option>
+                            <option value="patient_summary">patient_summary</option>
+                            <option value="covid_patients">covid_patients</option>
+                            <option value="encounter_analytics">encounter_analytics</option>
+                            <option value="medication_analytics">medication_analytics</option>
+                            <option value="provider_performance">provider_performance</option>
+                            <option value="payer_analytics">payer_analytics</option>
+                            <option value="cost_analysis">cost_analysis</option>
+                            <option value="patient_demographics">patient_demographics</option>
+                            <option value="custom">Custom (enter below)</option>
+                          </select>
+                          {derivedTable.name === 'custom' && (
+                            <Input
+                              placeholder="Enter custom table name"
+                              value={derivedTable.customName || ''}
+                              onChange={(e) => handleDerivedTableChange(index, 'customName', e.target.value)}
+                            />
+                          )}
+                        </div>
+                        <button
+                          className="icon-button danger"
+                          onClick={() => handleRemoveDerivedTable(index)}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+
+                      <div className="table-card-body">
+                        {/* Configuration Row */}
+                        <div className="config-section">
+                          <h4 className="config-heading">Configuration</h4>
+                          <div className="config-row">
+                            <div className="input-wrapper">
+                              <label className="input-label">Priority</label>
+                              <input
+                                type="number"
+                                className="input-field"
+                                min="10"
+                                value={derivedTable.priority}
+                                onChange={(e) =>
+                                  handleDerivedTableChange(index, 'priority', parseInt(e.target.value))
+                                }
+                              />
+                            </div>
+
+                            <div className="input-wrapper">
+                              <label className="input-label">Query Type</label>
+                              <select
+                                className="input-field"
+                                value={derivedTable.queryType}
+                                onChange={(e) => handleDerivedTableChange(index, 'queryType', e.target.value)}
+                              >
+                                {queryTypeOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="input-wrapper">
+                              <label className="input-label">If table exists</label>
+                              <select
+                                className="input-field"
+                                value={derivedTable.ifExists}
+                                onChange={(e) => handleDerivedTableChange(index, 'ifExists', e.target.value)}
+                              >
+                                <option value="replace">Replace</option>
+                                <option value="append">Append</option>
+                                <option value="fail">Fail</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Dependencies */}
+                          {formData.tables.length > 0 && (
+                            <div className="input-wrapper">
+                              <label className="input-label">Depends on (select base tables)</label>
+                              <select
+                                className="input-field"
+                                multiple
+                                value={derivedTable.dependsOn}
+                                onChange={(e) =>
+                                  handleDerivedTableChange(
+                                    index,
+                                    'dependsOn',
+                                    Array.from(e.target.selectedOptions, (option) => option.value)
+                                  )
+                                }
+                              >
+                                {formData.tables.map((t, i) => (
+                                  <option key={i} value={t.name || `table_${i}`}>
+                                    {t.name || `Table ${i + 1}`}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="input-hint">
+                                Hold Ctrl/Cmd to select multiple tables
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SQL Query */}
+                        <div className="config-section">
+                          <h4 className="config-heading">SQL Query</h4>
+                          <textarea
+                            className="input-field textarea sql-query-editor"
+                            rows="10"
+                            placeholder="SELECT &#10;  p.id,&#10;  p.name,&#10;  COUNT(*) as total_records&#10;FROM patients p&#10;GROUP BY p.id, p.name&#10;ORDER BY total_records DESC"
+                            value={derivedTable.sqlQuery}
+                            onChange={(e) => handleDerivedTableChange(index, 'sqlQuery', e.target.value)}
+                          />
+                        </div>
+
+                        {/* Target Table Name */}
+                        <div className="config-section">
+                          <h4 className="config-heading">Target Table</h4>
+                          <Input
+                            placeholder="Target table name (defaults to derived table name)"
+                            value={derivedTable.targetTableName}
+                            onChange={(e) => handleDerivedTableChange(index, 'targetTableName', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 5: Review */}
+          {currentStep === 5 && (
             <Card className="step-card fade-in">
               <Card.Header>
                 <Card.Title>Review Configuration</Card.Title>
@@ -997,6 +1246,31 @@ const CreatePipeline = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* Derived Tables Section */}
+                  {formData.derivedTables.length > 0 && (
+                    <div className="review-section">
+                      <h3 className="review-heading">Derived Tables ({formData.derivedTables.length})</h3>
+                      {formData.derivedTables.map((derivedTable, index) => (
+                        <div key={index} className="review-table-card">
+                          <div className="review-table-header">
+                            <Badge variant="success">Derived {index + 1}</Badge>
+                            <span className="review-table-name">
+                              {derivedTable.name === 'custom'
+                                ? (derivedTable.customName || 'Unnamed')
+                                : (derivedTable.name || 'Unnamed')}
+                            </span>
+                          </div>
+                          <div className="review-table-details">
+                            <span>🔢 Priority: {derivedTable.priority}</span>
+                            <span>📊 Query Type: {queryTypeOptions.find(q => q.value === derivedTable.queryType)?.label}</span>
+                            <span>🔗 Depends on: {derivedTable.dependsOn.length} table(s)</span>
+                            <span>💾 Target: {derivedTable.targetTableName || (derivedTable.name === 'custom' ? derivedTable.customName : derivedTable.name) || 'Same as name'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </Card.Body>
             </Card>

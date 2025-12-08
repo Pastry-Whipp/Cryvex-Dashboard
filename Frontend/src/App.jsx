@@ -11,6 +11,7 @@ import Pipelines from './pages/Pipelines';
 import CreatePipeline from './pages/CreatePipeline';
 import Profile from './pages/Profile';
 import MyConfigs from './pages/MyConfigs';
+import Executions from './pages/Executions';
 
 function App() {
   return (
@@ -20,14 +21,14 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          
+
           {/* Protected Routes */}
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
           } />
-          
+
           <Route path="/pipelines" element={
             <ProtectedRoute>
               <Pipelines />
@@ -52,9 +53,15 @@ function App() {
             </ProtectedRoute>
           } />
 
+          <Route path="/executions" element={
+            <ProtectedRoute>
+              <Executions />
+            </ProtectedRoute>
+          } />
+
           {/* Redirect root to dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          
+
           {/* 404 - Redirect to dashboard */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

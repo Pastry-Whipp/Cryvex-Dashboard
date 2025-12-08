@@ -5,19 +5,23 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
-import { GitBranch, Activity, Shield, Plus, Upload, CheckCircle, Clock, FileCode } from 'lucide-react';
+import { GitBranch, Activity, Shield, Plus, Upload, CheckCircle, Clock, FileCode, User, Calendar } from 'lucide-react';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
+import { auditLogService } from '../services/auditLog.service';
 import { useAuth } from '../hooks/useAuth';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const { user } = useAuth();
   const [configs, setConfigs] = useState([]);
+  const [executions, setExecutions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [executionsLoading, setExecutionsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     loadConfigs();
+    loadRecentExecutions();
   }, []);
 
   const loadConfigs = async () => {
@@ -34,6 +38,18 @@ const Dashboard = () => {
     }
   };
 
+  const loadRecentExecutions = async () => {
+    try {
+      setExecutionsLoading(true);
+      const response = await auditLogService.getAuditLogs({ limit: 5, offset: 0 });
+      setExecutions(response.logs);
+    } catch (err) {
+      console.error('Error loading executions:', err);
+    } finally {
+      setExecutionsLoading(false);
+    }
+  };
+
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -46,7 +62,7 @@ const Dashboard = () => {
     if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
     if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    
+
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -55,33 +71,33 @@ const Dashboard = () => {
   };
 
   const stats = [
-    { 
-      label: 'Pipeline Configs', 
-      value: loading ? '...' : configs.length.toString(), 
-      icon: FileCode, 
+    {
+      label: 'Pipeline Configs',
+      value: loading ? '...' : configs.length.toString(),
+      icon: FileCode,
       color: 'primary',
-      available: true 
+      available: true
     },
-    { 
-      label: 'Active Pipelines', 
-      value: '--', 
-      icon: Activity, 
+    {
+      label: 'Active Pipelines',
+      value: '--',
+      icon: Activity,
       color: 'success',
       available: false,
       comingSoon: true
     },
-    { 
-      label: 'Executions This Month', 
-      value: '--', 
-      icon: Activity, 
+    {
+      label: 'Executions This Month',
+      value: '--',
+      icon: Activity,
       color: 'info',
       available: false,
       comingSoon: true
     },
-    { 
-      label: 'Verified Records', 
-      value: '--', 
-      icon: Shield, 
+    {
+      label: 'Verified Records',
+      value: '--',
+      icon: Shield,
       color: 'warning',
       available: false,
       comingSoon: true
@@ -108,11 +124,11 @@ const Dashboard = () => {
           {stats.map((stat, index) => (
             <Card key={index} className={`stat-card ${stat.comingSoon ? 'stat-card-coming-soon' : ''}`}>
               <div className="stat-card-content">
-                <div 
-                  className="stat-icon" 
-                  style={{ 
-                    backgroundColor: stat.comingSoon ? 'var(--muted)' : `var(--${stat.color}-light)`, 
-                    color: stat.comingSoon ? 'var(--muted-foreground)' : `var(--${stat.color})` 
+                <div
+                  className="stat-icon"
+                  style={{
+                    backgroundColor: stat.comingSoon ? 'var(--muted)' : `var(--${stat.color}-light)`,
+                    color: stat.comingSoon ? 'var(--muted-foreground)' : `var(--${stat.color})`
                   }}
                 >
                   <stat.icon size={24} />
@@ -229,29 +245,69 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Executions Coming Soon Section */}
+        {/* Recent Executions */}
         <div className="dashboard-section">
           <div className="section-header">
             <h3 className="section-title">Recent Executions</h3>
-            <Badge variant="neutral">Coming Soon</Badge>
+            <Link to="/executions" className="section-link">
+              View All
+            </Link>
           </div>
 
-          <Card className="coming-soon-card">
-            <div className="coming-soon-content">
-              <div className="coming-soon-icon">
-                <Clock size={48} />
+          <Card>
+            {executionsLoading ? (
+              <div className="loading-container">
+                <Spinner size="md" />
+                <p>Loading recent executions...</p>
               </div>
-              <h4>Pipeline Executions</h4>
-              <p>
-                Track your pipeline executions, view logs, and monitor performance metrics.
-                This feature is currently in development.
-              </p>
-              <div className="coming-soon-features">
-                <span><Activity size={14} /> Real-time execution monitoring</span>
-                <span><Shield size={14} /> Integrity verification reports</span>
-                <span><GitBranch size={14} /> Execution history & logs</span>
+            ) : executions.length === 0 ? (
+              <div className="empty-state-mini">
+                <Activity size={32} className="empty-icon" />
+                <p>No executions yet</p>
+                <Link to="/pipelines">
+                  <Button variant="primary" size="sm">
+                    <Plus size={16} />
+                    Execute a Pipeline
+                  </Button>
+                </Link>
               </div>
-            </div>
+            ) : (
+              <div className="table-container">
+                <table className="execution-table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Entity</th>
+                      <th>Name</th>
+                      <th>User</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {executions.map((log) => (
+                      <tr key={log.id}>
+                        <td>
+                          <div className="action-cell" style={{ color: auditLogService.getActionColor(log.action_type) }}>
+                            <span className="action-label">{auditLogService.getActionLabel(log.action_type)}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <Badge variant="info">{auditLogService.getEntityLabel(log.entity_type)}</Badge>
+                        </td>
+                        <td className="font-medium">{log.entity_name || `ID: ${log.entity_id}`}</td>
+                        <td>
+                          <div className="user-cell">
+                            <User size={14} />
+                            <span>{log.username || 'System'}</span>
+                          </div>
+                        </td>
+                        <td className="text-muted">{formatDate(log.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         </div>
       </div>
