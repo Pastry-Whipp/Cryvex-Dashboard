@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Pipelines from './pages/Pipelines';
 import CreatePipeline from './pages/CreatePipeline';
 import Profile from './pages/Profile';
+import MyConfigs from './pages/MyConfigs';
 
 function App() {
   return (
@@ -42,6 +43,12 @@ function App() {
           <Route path="/profile" element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/my-configs" element={
+            <ProtectedRoute>
+              <MyConfigs />
             </ProtectedRoute>
           } />
 

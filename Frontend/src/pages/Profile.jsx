@@ -1,245 +1,81 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import Alert from '../components/common/Alert';
-import Modal from '../components/common/Modal';
 import Input from '../components/common/Input';
 import { 
-  Download, 
-  Upload, 
-  Trash2, 
-  FileJson, 
-  FileCode, 
+  User, 
+  Mail, 
   Calendar,
+  Shield,
+  Edit3,
+  Check,
   X,
-  Check
+  Key,
+  Settings,
+  FileCode
 } from 'lucide-react';
-import { pipelineConfigService } from '../services/pipelineConfig.service';
-import { downloadFile } from '../utils/configGenerator';
+import { useAuth } from '../hooks/useAuth';
+import { Link } from 'react-router-dom';
 import './Profile.css';
 
 const Profile = () => {
-  const [configs, setConfigs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { user } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
   const [success, setSuccess] = useState(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadFormData, setUploadFormData] = useState({
-    name: '',
-    description: '',
-    domain: '',
-    version: '',
-    yamlFile: null,
-    schemasFile: null
+  const [error, setError] = useState(null);
+  const [formData, setFormData] = useState({
+    full_name: user?.full_name || '',
+    email: user?.email || ''
   });
 
-  useEffect(() => {
-    loadConfigs();
-  }, []);
-
-  const loadConfigs = async () => {
-    try {
-      setLoading(true);
-      const data = await pipelineConfigService.getAll();
-      setConfigs(data);
-      setError(null);
-    } catch (err) {
-      console.error('Error loading configs:', err);
-      setError('Failed to load pipeline configurations');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDownloadYaml = (config) => {
-    const fileName = `${config.name.toLowerCase().replace(/\s+/g, '_')}_config.yaml`;
-    downloadFile(config.yaml_config, fileName, 'text/yaml');
-  };
-
-  const handleDownloadSchemas = (config) => {
-    try {
-      console.log('Downloading schemas for config:', config.id);
-      console.log('Config json_schemas:', config.json_schemas);
-      
-      // Check if json_schemas exists and is not empty
-      if (!config.json_schemas) {
-        console.error('json_schemas is null or undefined');
-        setError('No schema data available for this configuration');
-        return;
-      }
-
-      if (typeof config.json_schemas !== 'string') {
-        console.error('json_schemas is not a string:', typeof config.json_schemas);
-        setError('Schema data is in an unexpected format');
-        return;
-      }
-
-      if (config.json_schemas.trim() === '') {
-        console.error('json_schemas is empty string');
-        setError('No schema data available for this configuration');
-        return;
-      }
-
-      // Parse the JSON string
-      let schemas;
-      try {
-        schemas = JSON.parse(config.json_schemas);
-        console.log('Parsed schemas:', schemas);
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        console.error('Schema content:', config.json_schemas);
-        setError('Invalid JSON format in schema data');
-        return;
-      }
-
-      // Ensure schemas is an array
-      if (!Array.isArray(schemas)) {
-        console.error('Schemas is not an array:', typeof schemas);
-        setError('Schema data is not in the expected format (should be an array)');
-        return;
-      }
-
-      // Check if schemas array is empty
-      if (schemas.length === 0) {
-        console.warn('Schemas array is empty');
-        setError('No schemas found in this configuration');
-        return;
-      }
-
-      // Download each schema file
-      let downloadedCount = 0;
-      schemas.forEach((schema, index) => {
-        if (!schema || typeof schema !== 'object') {
-          console.warn(`Skipping invalid schema at index ${index}:`, schema);
-          return;
-        }
-
-        const tableName = schema.table_name || `table_${index + 1}`;
-        const fileName = `${tableName}_schema.json`;
-        const content = JSON.stringify(schema, null, 2);
-        downloadFile(content, fileName, 'application/json');
-        downloadedCount++;
-      });
-
-      if (downloadedCount === 0) {
-        setError('No valid schemas found to download');
-        return;
-      }
-
-      // Clear any previous errors on success
-      setError(null);
-      console.log(`Successfully downloaded ${downloadedCount} schema file(s)`);
-    } catch (err) {
-      console.error('Error downloading schemas:', err);
-      setError(`Failed to download schema files: ${err.message}`);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this pipeline configuration?')) {
-      return;
-    }
-
-    try {
-      await pipelineConfigService.delete(id);
-      setConfigs(configs.filter(c => c.id !== id));
-      setSuccess('Pipeline configuration deleted successfully');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      console.error('Error deleting config:', err);
-      setError('Failed to delete pipeline configuration');
-    }
-  };
-
-  const handleFileSelect = (e, type) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (type === 'yaml') {
-        setUploadFormData({ ...uploadFormData, yamlFile: file });
-      } else {
-        setUploadFormData({ ...uploadFormData, schemasFile: file });
-      }
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!uploadFormData.name || !uploadFormData.yamlFile || !uploadFormData.schemasFile) {
-      setError('Please fill in all required fields and select files');
-      return;
-    }
-
-    try {
-      setUploading(true);
-      setError(null);
-
-      // Read files
-      const yamlContent = await uploadFormData.yamlFile.text();
-      const schemasContent = await uploadFormData.schemasFile.text();
-
-      // Validate JSON schemas
-      try {
-        JSON.parse(schemasContent);
-      } catch (err) {
-        setError('Invalid JSON format in schemas file');
-        setUploading(false);
-        return;
-      }
-
-      // Create config
-      await pipelineConfigService.create({
-        name: uploadFormData.name,
-        description: uploadFormData.description || null,
-        domain: uploadFormData.domain || null,
-        version: uploadFormData.version || null,
-        yaml_config: yamlContent,
-        json_schemas: schemasContent
-      });
-
-      setSuccess('Pipeline configuration uploaded successfully');
-      setShowUploadModal(false);
-      setUploadFormData({
-        name: '',
-        description: '',
-        domain: '',
-        version: '',
-        yamlFile: null,
-        schemasFile: null
-      });
-      loadConfigs();
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      console.error('Error uploading config:', err);
-      setError(err.response?.data?.detail || 'Failed to upload pipeline configuration');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      month: 'long',
+      day: 'numeric'
     });
+  };
+
+  const handleSave = async () => {
+    try {
+      // Here you would call the API to update user profile
+      // await userService.updateProfile(formData);
+      setSuccess('Profile updated successfully');
+      setIsEditing(false);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError('Failed to update profile');
+    }
+  };
+
+  const handleCancel = () => {
+    setFormData({
+      full_name: user?.full_name || '',
+      email: user?.email || ''
+    });
+    setIsEditing(false);
+  };
+
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   return (
     <DashboardLayout>
       <div className="profile-page">
         <div className="profile-header">
-          <div>
-            <h1 className="page-title">My Pipeline Configurations</h1>
-            <p className="page-subtitle">Manage your saved pipeline configurations</p>
-          </div>
-          <Button variant="primary" onClick={() => setShowUploadModal(true)}>
-            <Upload size={20} />
-            Upload Configuration
-          </Button>
+          <h1 className="page-title">My Profile</h1>
+          <p className="page-subtitle">Manage your account settings and preferences</p>
         </div>
 
         {/* Alerts */}
@@ -254,197 +90,181 @@ const Profile = () => {
           </Alert>
         )}
 
-        {/* Configurations List */}
-        {loading ? (
-          <Card>
-            <div className="loading-state">Loading configurations...</div>
-          </Card>
-        ) : configs.length === 0 ? (
-          <Card>
-            <div className="empty-state">
-              <FileCode size={48} className="empty-icon" />
-              <h3>No configurations found</h3>
-              <p>Upload your first pipeline configuration to get started</p>
-              <Button variant="primary" onClick={() => setShowUploadModal(true)}>
-                <Upload size={20} />
-                Upload Configuration
-              </Button>
-            </div>
-          </Card>
-        ) : (
-          <div className="configs-grid">
-            {configs.map((config) => (
-              <Card key={config.id} className="config-card">
-                <div className="config-card-header">
-                  <div>
-                    <h3 className="config-name">{config.name}</h3>
-                    {config.domain && (
-                      <Badge variant="info" className="config-badge">
-                        {config.domain}
-                      </Badge>
-                    )}
-                  </div>
-                  <button
-                    className="config-delete-btn"
-                    onClick={() => handleDelete(config.id)}
-                    title="Delete configuration"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-
-                {config.description && (
-                  <p className="config-description">{config.description}</p>
-                )}
-
-                <div className="config-meta">
-                  {config.version && (
-                    <span className="config-meta-item">
-                      <span className="config-meta-label">Version:</span>
-                      {config.version}
-                    </span>
-                  )}
-                  <span className="config-meta-item">
-                    <Calendar size={14} />
-                    {formatDate(config.created_at)}
-                  </span>
-                </div>
-
-                <div className="config-actions">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDownloadYaml(config)}
-                  >
-                    <FileCode size={16} />
-                    Download YAML
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDownloadSchemas(config)}
-                  >
-                    <FileJson size={16} />
-                    Download Schemas
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Upload Modal */}
-        {showUploadModal && (
-          <Modal
-            isOpen={showUploadModal}
-            onClose={() => setShowUploadModal(false)}
-            size="lg"
-          >
-            <Modal.Header>
-              <Modal.Title>Upload Pipeline Configuration</Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
-              <div className="upload-form">
-                <Input
-                  label="Configuration Name"
-                  placeholder="e.g., Banking ETL Pipeline"
-                  value={uploadFormData.name}
-                  onChange={(e) =>
-                    setUploadFormData({ ...uploadFormData, name: e.target.value })
-                  }
-                  required
-                />
-                <Input
-                  label="Description"
-                  placeholder="Brief description of the pipeline"
-                  value={uploadFormData.description}
-                  onChange={(e) =>
-                    setUploadFormData({ ...uploadFormData, description: e.target.value })
-                  }
-                />
-                <div className="form-row">
-                  <Input
-                    label="Domain"
-                    placeholder="e.g., banking"
-                    value={uploadFormData.domain}
-                    onChange={(e) =>
-                      setUploadFormData({ ...uploadFormData, domain: e.target.value })
-                    }
-                  />
-                  <Input
-                    label="Version"
-                    placeholder="e.g., 1.0"
-                    value={uploadFormData.version}
-                    onChange={(e) =>
-                      setUploadFormData({ ...uploadFormData, version: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="file-upload-section">
-                  <label className="file-upload-label">
-                    <span>YAML Configuration File *</span>
-                    <input
-                      type="file"
-                      accept=".yaml,.yml"
-                      onChange={(e) => handleFileSelect(e, 'yaml')}
-                    />
-                    <div className="file-upload-display">
-                      {uploadFormData.yamlFile ? (
-                        <span className="file-name">
-                          <FileCode size={16} />
-                          {uploadFormData.yamlFile.name}
-                        </span>
-                      ) : (
-                        <span className="file-placeholder">Select YAML file</span>
-                      )}
-                    </div>
-                  </label>
-                </div>
-                <div className="file-upload-section">
-                  <label className="file-upload-label">
-                    <span>JSON Schemas File *</span>
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={(e) => handleFileSelect(e, 'schemas')}
-                    />
-                    <div className="file-upload-display">
-                      {uploadFormData.schemasFile ? (
-                        <span className="file-name">
-                          <FileJson size={16} />
-                          {uploadFormData.schemasFile.name}
-                        </span>
-                      ) : (
-                        <span className="file-placeholder">Select JSON schemas file</span>
-                      )}
-                    </div>
-                  </label>
+        <div className="profile-content">
+          {/* Profile Card */}
+          <Card className="profile-card">
+            <div className="profile-card-header">
+              <div className="profile-avatar">
+                <span className="avatar-text">{getInitials(user?.full_name)}</span>
+              </div>
+              <div className="profile-identity">
+                <h2 className="profile-name">{user?.full_name || 'User'}</h2>
+                <span className="profile-username">@{user?.username || 'username'}</span>
+                <div className="profile-badges">
+                  <Badge variant={user?.is_active ? 'success' : 'neutral'}>
+                    {user?.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                  <Badge variant={user?.is_verified ? 'info' : 'warning'}>
+                    {user?.is_verified ? 'Verified' : 'Unverified'}
+                  </Badge>
                 </div>
               </div>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button
-                variant="ghost"
-                onClick={() => setShowUploadModal(false)}
-                disabled={uploading}
-              >
-                Cancel
+              {!isEditing && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setIsEditing(true)}
+                  className="edit-btn"
+                >
+                  <Edit3 size={16} />
+                  Edit Profile
+                </Button>
+              )}
+            </div>
+
+            <div className="profile-details">
+              {isEditing ? (
+                <div className="edit-form">
+                  <Input
+                    label="Full Name"
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                    placeholder="Enter your full name"
+                  />
+                  <Input
+                    label="Email Address"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="Enter your email"
+                  />
+                  <div className="edit-actions">
+                    <Button variant="ghost" onClick={handleCancel}>
+                      <X size={16} />
+                      Cancel
+                    </Button>
+                    <Button variant="primary" onClick={handleSave}>
+                      <Check size={16} />
+                      Save Changes
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="details-grid">
+                  <div className="detail-item">
+                    <div className="detail-icon">
+                      <Mail size={20} />
+                    </div>
+                    <div className="detail-content">
+                      <span className="detail-label">Email Address</span>
+                      <span className="detail-value">{user?.email || 'Not set'}</span>
+                    </div>
+                  </div>
+
+                  <div className="detail-item">
+                    <div className="detail-icon">
+                      <User size={20} />
+                    </div>
+                    <div className="detail-content">
+                      <span className="detail-label">Username</span>
+                      <span className="detail-value">@{user?.username || 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  <div className="detail-item">
+                    <div className="detail-icon">
+                      <Shield size={20} />
+                    </div>
+                    <div className="detail-content">
+                      <span className="detail-label">Role</span>
+                      <span className="detail-value">{user?.role || 'Operator'}</span>
+                    </div>
+                  </div>
+
+                  <div className="detail-item">
+                    <div className="detail-icon">
+                      <Calendar size={20} />
+                    </div>
+                    <div className="detail-content">
+                      <span className="detail-label">Member Since</span>
+                      <span className="detail-value">{formatDate(user?.created_at)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Quick Actions */}
+          <div className="quick-actions">
+            <Card className="action-card">
+              <div className="action-icon">
+                <FileCode size={24} />
+              </div>
+              <div className="action-content">
+                <h3>My Configurations</h3>
+                <p>View and manage your saved pipeline configurations</p>
+              </div>
+              <Link to="/my-configs">
+                <Button variant="outline" size="sm">
+                  View Configs
+                </Button>
+              </Link>
+            </Card>
+
+            <Card className="action-card">
+              <div className="action-icon">
+                <Key size={24} />
+              </div>
+              <div className="action-content">
+                <h3>Security</h3>
+                <p>Update your password and security settings</p>
+              </div>
+              <Button variant="outline" size="sm" disabled>
+                Coming Soon
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleUpload}
-                disabled={uploading}
-              >
-                {uploading ? 'Uploading...' : 'Upload'}
-                <Upload size={18} />
+            </Card>
+
+            <Card className="action-card">
+              <div className="action-icon">
+                <Settings size={24} />
+              </div>
+              <div className="action-content">
+                <h3>Preferences</h3>
+                <p>Customize your dashboard experience</p>
+              </div>
+              <Button variant="outline" size="sm" disabled>
+                Coming Soon
               </Button>
-            </Modal.Footer>
-          </Modal>
-        )}
+            </Card>
+          </div>
+
+          {/* Account Stats */}
+          <Card className="stats-card">
+            <h3 className="stats-title">Account Overview</h3>
+            <div className="stats-grid">
+              <div className="stat-item">
+                <span className="stat-number">-</span>
+                <span className="stat-label">Total Pipelines</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-number">-</span>
+                <span className="stat-label">Configurations</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-number">-</span>
+                <span className="stat-label">Executions</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-number">-</span>
+                <span className="stat-label">Integrity Checks</span>
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
     </DashboardLayout>
   );
 };
 
 export default Profile;
-

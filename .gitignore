@@ -1,3 +1,5 @@
+ETL/
+
 # Bytecode / cache
 __pycache__/
 *.py[cod]
@@ -46,5 +48,8 @@ pnpm-lock.yaml
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Pipeline configuration files (generated)
+Backend/pipeline_configs/
 
 

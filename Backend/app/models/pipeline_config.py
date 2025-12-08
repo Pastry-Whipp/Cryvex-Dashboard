@@ -23,9 +23,12 @@ class PipelineConfig(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationship
+    # Relationships
     user = relationship("User", back_populates="pipeline_configs")
+    executions = relationship("PipelineExecution", back_populates="pipeline_config", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<PipelineConfig(id={self.id}, name={self.name}, user_id={self.user_id})>"
+
+
 

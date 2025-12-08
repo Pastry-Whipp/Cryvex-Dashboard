@@ -1,63 +1,95 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
-import { GitBranch, Activity, Shield, Plus, Upload, CheckCircle } from 'lucide-react';
+import Spinner from '../components/common/Spinner';
+import { GitBranch, Activity, Shield, Plus, Upload, CheckCircle, Clock, FileCode } from 'lucide-react';
+import { pipelineConfigService } from '../services/pipelineConfig.service';
+import { useAuth } from '../hooks/useAuth';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const stats = [
-    { label: 'Total Pipelines', value: '24', icon: GitBranch, color: 'primary' },
-    { label: 'Active Pipelines', value: '18', icon: Activity, color: 'success' },
-    { label: 'Executions This Month', value: '1,247', icon: Activity, color: 'info' },
-    { label: 'Verified Records', value: '3,891', icon: Shield, color: 'warning' },
-  ];
+  const { user } = useAuth();
+  const [configs, setConfigs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const recentExecutions = [
-    {
-      id: 1,
-      pipeline: 'Banking ETL Pipeline',
-      status: 'success',
-      records: '1,234',
-      startedAt: '2 hours ago',
-      duration: '2m 15s',
-    },
-    {
-      id: 2,
-      pipeline: 'Medical Records Processor',
-      status: 'success',
-      records: '856',
-      startedAt: '5 hours ago',
-      duration: '1m 45s',
-    },
-    {
-      id: 3,
-      pipeline: 'Crypto Transaction Validator',
-      status: 'error',
-      records: '423',
-      startedAt: '1 day ago',
-      duration: '3m 02s',
-    },
-    {
-      id: 4,
-      pipeline: 'Banking ETL Pipeline',
-      status: 'success',
-      records: '1,567',
-      startedAt: '1 day ago',
-      duration: '2m 30s',
-    },
-  ];
+  useEffect(() => {
+    loadConfigs();
+  }, []);
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      success: 'success',
-      error: 'error',
-      running: 'info',
-    };
-    return <Badge variant={variants[status]}>{status.toUpperCase()}</Badge>;
+  const loadConfigs = async () => {
+    try {
+      setLoading(true);
+      const data = await pipelineConfigService.getAll();
+      setConfigs(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading configs:', err);
+      setError('Failed to load data');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+  };
+
+  const stats = [
+    { 
+      label: 'Pipeline Configs', 
+      value: loading ? '...' : configs.length.toString(), 
+      icon: FileCode, 
+      color: 'primary',
+      available: true 
+    },
+    { 
+      label: 'Active Pipelines', 
+      value: '--', 
+      icon: Activity, 
+      color: 'success',
+      available: false,
+      comingSoon: true
+    },
+    { 
+      label: 'Executions This Month', 
+      value: '--', 
+      icon: Activity, 
+      color: 'info',
+      available: false,
+      comingSoon: true
+    },
+    { 
+      label: 'Verified Records', 
+      value: '--', 
+      icon: Shield, 
+      color: 'warning',
+      available: false,
+      comingSoon: true
+    },
+  ];
+
+  // Get recent configs for display
+  const recentConfigs = configs.slice(0, 4);
 
   return (
     <DashboardLayout>
@@ -65,21 +97,36 @@ const Dashboard = () => {
         <div className="dashboard-header">
           <div>
             <h1 className="dashboard-title">Dashboard</h1>
-            <p className="dashboard-subtitle">Welcome back! Here's your ETL overview.</p>
+            <p className="dashboard-subtitle">
+              Welcome back{user?.full_name ? `, ${user.full_name}` : ''}! Here's your ETL overview.
+            </p>
           </div>
         </div>
 
         {/* Stats Grid */}
         <div className="dashboard-stats">
           {stats.map((stat, index) => (
-            <Card key={index} className="stat-card">
+            <Card key={index} className={`stat-card ${stat.comingSoon ? 'stat-card-coming-soon' : ''}`}>
               <div className="stat-card-content">
-                <div className="stat-icon" style={{ backgroundColor: `var(--${stat.color}-light)`, color: `var(--${stat.color})` }}>
+                <div 
+                  className="stat-icon" 
+                  style={{ 
+                    backgroundColor: stat.comingSoon ? 'var(--muted)' : `var(--${stat.color}-light)`, 
+                    color: stat.comingSoon ? 'var(--muted-foreground)' : `var(--${stat.color})` 
+                  }}
+                >
                   <stat.icon size={24} />
                 </div>
                 <div className="stat-info">
                   <p className="stat-label">{stat.label}</p>
-                  <h3 className="stat-value">{stat.value}</h3>
+                  <div className="stat-value-wrapper">
+                    <h3 className={`stat-value ${stat.comingSoon ? 'stat-value-muted' : ''}`}>
+                      {stat.value}
+                    </h3>
+                    {stat.comingSoon && (
+                      <Badge variant="neutral" className="coming-soon-badge">Coming Soon</Badge>
+                    )}
+                  </div>
                 </div>
               </div>
             </Card>
@@ -93,61 +140,117 @@ const Dashboard = () => {
             <Link to="/pipelines/create">
               <Button variant="primary">
                 <Plus size={20} />
-                Create Pipeline
+                Create Pipeline Config
               </Button>
             </Link>
-            <Button variant="secondary">
-              <Upload size={20} />
-              Upload Data
+            <Link to="/my-configs">
+              <Button variant="secondary">
+                <Upload size={20} />
+                Manage Configs
+              </Button>
+            </Link>
+            <Button variant="outline" disabled className="coming-soon-action">
+              <CheckCircle size={20} />
+              Verify Integrity
+              <span className="action-coming-soon-tag">Soon</span>
             </Button>
-            <Link to="/integrity/verify">
-              <Button variant="outline">
-                <CheckCircle size={20} />
-                Verify Integrity
-              </Button>
-            </Link>
           </div>
         </div>
 
-        {/* Recent Executions */}
+        {/* Recent Pipeline Configs */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3 className="section-title">Recent Executions</h3>
-            <Link to="/executions" className="section-link">
+            <h3 className="section-title">Recent Pipeline Configs</h3>
+            <Link to="/my-configs" className="section-link">
               View All
             </Link>
           </div>
 
           <Card>
-            <div className="table-container">
-              <table className="execution-table">
-                <thead>
-                  <tr>
-                    <th>Pipeline</th>
-                    <th>Status</th>
-                    <th>Records</th>
-                    <th>Started</th>
-                    <th>Duration</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentExecutions.map((execution) => (
-                    <tr key={execution.id}>
-                      <td className="font-medium">{execution.pipeline}</td>
-                      <td>{getStatusBadge(execution.status)}</td>
-                      <td>{execution.records}</td>
-                      <td className="text-muted">{execution.startedAt}</td>
-                      <td className="text-muted">{execution.duration}</td>
-                      <td>
-                        <Link to={`/executions/${execution.id}`}>
-                          <Button variant="ghost" size="sm">View Logs</Button>
-                        </Link>
-                      </td>
+            {loading ? (
+              <div className="loading-container">
+                <Spinner size="md" />
+                <p>Loading your configurations...</p>
+              </div>
+            ) : error ? (
+              <div className="error-state">
+                <p>{error}</p>
+                <Button variant="outline" size="sm" onClick={loadConfigs}>
+                  Try Again
+                </Button>
+              </div>
+            ) : recentConfigs.length === 0 ? (
+              <div className="empty-state-mini">
+                <FileCode size={32} className="empty-icon" />
+                <p>No pipeline configurations yet</p>
+                <Link to="/pipelines/create">
+                  <Button variant="primary" size="sm">
+                    <Plus size={16} />
+                    Create Your First Config
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="execution-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Domain</th>
+                      <th>Version</th>
+                      <th>Created</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {recentConfigs.map((config) => (
+                      <tr key={config.id}>
+                        <td className="font-medium">{config.name}</td>
+                        <td>
+                          {config.domain ? (
+                            <Badge variant="info">{config.domain}</Badge>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </td>
+                        <td className="text-muted">{config.version || '-'}</td>
+                        <td className="text-muted">{formatDate(config.created_at)}</td>
+                        <td>
+                          <Link to="/my-configs">
+                            <Button variant="ghost" size="sm">View</Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Executions Coming Soon Section */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            <h3 className="section-title">Recent Executions</h3>
+            <Badge variant="neutral">Coming Soon</Badge>
+          </div>
+
+          <Card className="coming-soon-card">
+            <div className="coming-soon-content">
+              <div className="coming-soon-icon">
+                <Clock size={48} />
+              </div>
+              <h4>Pipeline Executions</h4>
+              <p>
+                Track your pipeline executions, view logs, and monitor performance metrics.
+                This feature is currently in development.
+              </p>
+              <div className="coming-soon-features">
+                <span><Activity size={14} /> Real-time execution monitoring</span>
+                <span><Shield size={14} /> Integrity verification reports</span>
+                <span><GitBranch size={14} /> Execution history & logs</span>
+              </div>
             </div>
           </Card>
         </div>

@@ -7,7 +7,8 @@ import {
   Shield, 
   Users, 
   FileText,
-  Settings
+  Settings,
+  FileCode2
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -15,6 +16,7 @@ const Sidebar = () => {
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/pipelines', icon: GitBranch, label: 'Pipelines' },
+    { to: '/my-configs', icon: FileCode2, label: 'My Configs' },
     { to: '/executions', icon: Activity, label: 'Executions' },
     { to: '/integrity', icon: Shield, label: 'Integrity' },
     { to: '/users', icon: Users, label: 'Users', adminOnly: true },

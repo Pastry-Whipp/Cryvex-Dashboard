@@ -1,20 +1,17 @@
 .profile-page {
-  max-width: 1200px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
 .profile-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
 }
 
 .page-title {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-semibold);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
   color: var(--text-primary);
-  margin-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
 }
 
 .page-subtitle {
@@ -22,200 +19,272 @@
   color: var(--text-secondary);
 }
 
-.loading-state,
-.empty-state {
+.profile-content {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-16) var(--space-6);
-  text-align: center;
-}
-
-.empty-icon {
-  color: var(--text-muted);
-  margin-bottom: var(--space-4);
-}
-
-.empty-state h3 {
-  margin-bottom: var(--space-2);
-  color: var(--text-primary);
-}
-
-.empty-state p {
-  margin-bottom: var(--space-6);
-  color: var(--text-secondary);
-}
-
-.configs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
   gap: var(--space-6);
 }
 
-.config-card {
-  display: flex;
-  flex-direction: column;
-  transition: all 0.2s ease;
+/* Profile Card */
+.profile-card {
+  position: relative;
+  overflow: visible;
 }
 
-.config-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-}
-
-.config-card-header {
+.profile-card-header {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: var(--space-3);
+  gap: var(--space-6);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: var(--space-6);
 }
 
-.config-name {
-  font-size: var(--text-lg);
-  font-weight: var(--font-semibold);
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
-}
-
-.config-badge {
-  margin-top: var(--space-1);
-}
-
-.config-delete-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--space-2);
-  color: var(--text-muted);
-  border-radius: var(--radius-md);
-  transition: all 0.2s ease;
+.profile-avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--primary), var(--chart-2));
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
-.config-delete-btn:hover {
-  background-color: rgba(239, 83, 80, 0.1);
-  color: var(--error);
+.avatar-text {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: white;
+  letter-spacing: 1px;
 }
 
-.config-description {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  margin-bottom: var(--space-4);
-  line-height: 1.5;
-}
-
-.config-meta {
+.profile-identity {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-light);
 }
 
-.config-meta-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
+.profile-name {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.profile-username {
+  font-size: var(--text-base);
   color: var(--text-muted);
 }
 
-.config-meta-label {
-  font-weight: var(--font-medium);
-  color: var(--text-secondary);
-}
-
-.config-actions {
+.profile-badges {
   display: flex;
   gap: var(--space-2);
-  margin-top: auto;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-light);
-}
-
-.config-actions button {
-  flex: 1;
-}
-
-.upload-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
-}
-
-.file-upload-section {
   margin-top: var(--space-2);
 }
 
-.file-upload-label {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  cursor: pointer;
+.edit-btn {
+  flex-shrink: 0;
 }
 
-.file-upload-label span {
+/* Details Grid */
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6);
+}
+
+.detail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.detail-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background-color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.detail-label {
   font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-value {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
   color: var(--text-primary);
 }
 
-.file-upload-label input[type="file"] {
-  display: none;
+/* Edit Form */
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
-.file-upload-display {
-  padding: var(--space-4);
-  border: 2px dashed var(--border);
-  border-radius: var(--radius-md);
-  background-color: var(--muted);
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* Quick Actions */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.action-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) !important;
   transition: all 0.2s ease;
 }
 
-.file-upload-display:hover {
-  border-color: var(--primary);
-  background-color: rgba(102, 126, 234, 0.05);
+.action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-.file-name {
+.action-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--accent), var(--primary-light));
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
+  justify-content: center;
+  color: var(--primary);
+  flex-shrink: 0;
 }
 
-.file-placeholder {
-  color: var(--text-muted);
+.action-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-content h3 {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.action-content p {
   font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Stats Card */
+.stats-card {
+  background: linear-gradient(135deg, var(--card) 0%, var(--accent) 100%);
+}
+
+.stats-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-5) 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--background);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.stat-number {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--primary);
+}
+
+.stat-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
-  .profile-header {
+  .profile-card-header {
     flex-direction: column;
-    gap: var(--space-4);
+    align-items: center;
+    text-align: center;
   }
 
-  .configs-grid {
+  .profile-identity {
+    align-items: center;
+  }
+
+  .profile-badges {
+    justify-content: center;
+  }
+
+  .edit-btn {
+    width: 100%;
+    margin-top: var(--space-4);
+  }
+
+  .details-grid {
     grid-template-columns: 1fr;
   }
 
-  .form-row {
-    grid-template-columns: 1fr;
+  .detail-item {
+    justify-content: center;
+    text-align: center;
+    flex-direction: column;
+    align-items: center;
   }
 
-  .config-actions {
+  .action-card {
     flex-direction: column;
+    text-align: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
-

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import logging
 from app.database import get_db
 from app.models import User, PipelineConfig
 from app.schemas.pipeline_config import (
@@ -10,6 +11,9 @@ from app.schemas.pipeline_config import (
     PipelineConfigListResponse
 )
 from app.dependencies import get_current_active_user
+from app.utils.file_manager import save_config_file, update_config_file, delete_config_file
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pipeline-configs", tags=["Pipeline Configs"])
 
@@ -36,6 +40,17 @@ def create_pipeline_config(
     db.add(db_config)
     db.commit()
     db.refresh(db_config)
+    
+    # Save YAML file locally after successful database save
+    try:
+        file_path = save_config_file(db_config.id, db_config.name, db_config.yaml_config)
+        if file_path:
+            logger.info(f"Successfully saved config file locally: {file_path}")
+        else:
+            logger.warning(f"Failed to save config file locally for config_id={db_config.id}")
+    except Exception as e:
+        logger.error(f"Error saving config file locally: {str(e)}")
+        # Don't fail the request if file save fails, just log it
     
     return db_config
 
@@ -107,6 +122,18 @@ def update_pipeline_config(
     db.commit()
     db.refresh(config)
     
+    # Update local YAML file if yaml_config was updated
+    if 'yaml_config' in update_data or 'name' in update_data:
+        try:
+            file_path = update_config_file(config.id, config.name, config.yaml_config)
+            if file_path:
+                logger.info(f"Successfully updated config file locally: {file_path}")
+            else:
+                logger.warning(f"Failed to update config file locally for config_id={config.id}")
+        except Exception as e:
+            logger.error(f"Error updating config file locally: {str(e)}")
+            # Don't fail the request if file update fails, just log it
+    
     return config
 
 
@@ -132,6 +159,17 @@ def delete_pipeline_config(
     
     db.delete(config)
     db.commit()
+    
+    # Delete local YAML file after successful database deletion
+    try:
+        deleted = delete_config_file(config_id)
+        if deleted:
+            logger.info(f"Successfully deleted config file locally for config_id={config_id}")
+        else:
+            logger.warning(f"Failed to delete config file locally for config_id={config_id}")
+    except Exception as e:
+        logger.error(f"Error deleting config file locally: {str(e)}")
+        # Don't fail the request if file deletion fails, just log it
     
     return None
 

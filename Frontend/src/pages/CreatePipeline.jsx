@@ -8,11 +8,11 @@ import Badge from '../components/common/Badge';
 import Modal from '../components/common/Modal';
 import Alert from '../components/common/Alert';
 import { 
-  ArrowLeft, 
-  ArrowRight, 
+  ArrowLeft,
+  ArrowRight,
   Check, 
-  Plus, 
-  Trash2, 
+  Plus,
+  Trash2,
   Upload,
   Database,
   FileJson,
