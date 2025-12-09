@@ -434,7 +434,14 @@
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2);
+  background-color: var(--white);
+  border-radius: var(--radius-md);
+}
+
+.transform-row:last-child {
+  margin-bottom: 0;
 }
 
 .input-field.compact {
@@ -915,4 +922,165 @@
 .sql-query-editor::placeholder {
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* Tab-Based Table Navigation */
+.tables-tabbed-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.table-tabs {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background-color: var(--cream);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+  flex-wrap: wrap;
+}
+
+.table-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-tabs::-webkit-scrollbar-track {
+  background: var(--muted);
+  border-radius: var(--radius-full);
+}
+
+.table-tabs::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-full);
+}
+
+.table-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--white);
+  border: 2px solid var(--border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  position: relative;
+}
+
+.table-tab:hover {
+  border-color: var(--primary-light);
+  background-color: rgba(255, 107, 157, 0.05);
+  color: var(--text-primary);
+}
+
+.table-tab.active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--white);
+  box-shadow: 0 2px 8px rgba(255, 107, 157, 0.3);
+}
+
+.table-tab.active:hover {
+  background-color: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+.table-tab svg {
+  flex-shrink: 0;
+}
+
+.table-tab span {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  margin-left: var(--space-1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.tab-close-btn:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
+  transform: scale(1.1);
+}
+
+.table-tab.active .tab-close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.active-table {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dependency Checkboxes */
+.dependencies-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background-color: var(--white);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-2);
+}
+
+.dependency-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--cream);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.dependency-checkbox-label:hover {
+  background-color: rgba(255, 107, 157, 0.1);
+  border-color: var(--primary-light);
+}
+
+.dependency-checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.dependency-checkbox-label input[type="checkbox"]:checked+span {
+  font-weight: var(--font-semibold);
+  color: var(--primary);
 }

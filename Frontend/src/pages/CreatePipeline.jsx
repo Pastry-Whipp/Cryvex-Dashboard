@@ -32,6 +32,7 @@ const CreatePipeline = () => {
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [activeTableTab, setActiveTableTab] = useState(0);
 
   // Form data state
   const [formData, setFormData] = useState({
@@ -143,11 +144,19 @@ const CreatePipeline = () => {
       ...formData,
       tables: [...formData.tables, newTable]
     });
+    // Switch to the newly added table tab
+    setActiveTableTab(formData.tables.length);
   };
 
   const handleRemoveTable = (index) => {
     const newTables = formData.tables.filter((_, i) => i !== index);
     setFormData({ ...formData, tables: newTables });
+    // Adjust active tab if needed
+    if (activeTableTab >= newTables.length && newTables.length > 0) {
+      setActiveTableTab(newTables.length - 1);
+    } else if (newTables.length === 0) {
+      setActiveTableTab(0);
+    }
   };
 
   const handleTableChange = (index, field, value) => {
@@ -715,371 +724,405 @@ const CreatePipeline = () => {
                   </div>
                 </Card>
               ) : (
-                <div className="tables-list">
-                  {formData.tables.map((table, index) => (
-                    <Card key={index} className="table-card">
-                      <div className="table-card-header">
-                        <div className="table-header-left">
-                          <Badge variant="info">Table {index + 1}</Badge>
-                          <Input
-                            placeholder="Table name (e.g., customers)"
-                            value={table.name}
-                            onChange={(e) => handleTableChange(index, 'name', e.target.value)}
-                          />
-                        </div>
+                <div className="tables-tabbed-view">
+                  {/* Tab Navigation */}
+                  <div className="table-tabs">
+                    {formData.tables.map((table, index) => (
+                      <button
+                        key={index}
+                        className={`table-tab ${activeTableTab === index ? 'active' : ''}`}
+                        onClick={() => setActiveTableTab(index)}
+                      >
+                        <Database size={16} />
+                        <span>{table.name || `Table ${index + 1}`}</span>
                         <button
-                          className="icon-button danger"
-                          onClick={() => handleRemoveTable(index)}
+                          className="tab-close-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveTable(index);
+                          }}
+                          title="Remove table"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={14} />
                         </button>
-                      </div>
+                      </button>
+                    ))}
+                  </div>
 
-                      <div className="table-card-body">
-                        {/* Source Configuration */}
-                        <div className="config-section">
-                          <h4 className="config-heading">Source File</h4>
-                          <div className="file-upload-area">
-                            <input
-                              type="file"
-                              accept=".csv"
-                              id={`file-${index}`}
-                              className="file-input"
-                              onChange={(e) => handleFileUpload(index, e.target.files[0])}
+                  {/* Active Table Content */}
+                  {formData.tables.map((table, index) => (
+                    activeTableTab === index && (
+                      <Card key={index} className="table-card active-table">
+                        <div className="table-card-header">
+                          <div className="table-header-left">
+                            <Badge variant="info">Table {index + 1}</Badge>
+                            <Input
+                              placeholder="Table name (e.g., customers)"
+                              value={table.name}
+                              onChange={(e) => handleTableChange(index, 'name', e.target.value)}
                             />
-                            <label htmlFor={`file-${index}`} className="file-upload-label">
-                              <Upload size={24} />
-                              <span>
-                                {table.sourceFileName || 'Click to upload CSV file'}
-                              </span>
-                            </label>
                           </div>
+                          <button
+                            className="icon-button danger"
+                            onClick={() => handleRemoveTable(index)}
+                          >
+                            <Trash2 size={18} />
+                          </button>
                         </div>
 
-                        {/* Target Configuration */}
-                        <div className="config-section">
-                          <h4 className="config-heading">Target Configuration</h4>
-                          <div className="config-row">
-                            <div className="input-wrapper">
-                              <label className="input-label">If table exists</label>
-                              <select
-                                className="input-field"
-                                value={table.ifExists}
-                                onChange={(e) => handleTableChange(index, 'ifExists', e.target.value)}
-                              >
-                                <option value="replace">Replace</option>
-                                <option value="append">Append</option>
-                                <option value="fail">Fail</option>
-                              </select>
-                            </div>
-
-                            <div className="input-wrapper">
-                              <label className="input-label">Priority</label>
-                              <input
-                                type="number"
-                                className="input-field"
-                                min="1"
-                                value={table.priority}
-                                onChange={(e) =>
-                                  handleTableChange(index, 'priority', parseInt(e.target.value))
-                                }
-                              />
-                            </div>
-                          </div>
-
-                          {/* Dependencies */}
-                          {formData.tables.length > 1 && (
-                            <div className="input-wrapper">
-                              <label className="input-label">Depends on (optional)</label>
-                              <select
-                                className="input-field"
-                                multiple
-                                value={table.dependsOn}
-                                onChange={(e) =>
-                                  handleTableChange(
-                                    index,
-                                    'dependsOn',
-                                    Array.from(e.target.selectedOptions, (option) => option.value)
-                                  )
-                                }
-                              >
-                                {formData.tables
-                                  .filter((_, i) => i !== index)
-                                  .map((t, i) => (
-                                    <option key={i} value={t.name || `table_${i}`}>
-                                      {t.name || `Table ${i + 1}`}
-                                    </option>
-                                  ))}
-                              </select>
-                              <span className="input-hint">
-                                Hold Ctrl/Cmd to select multiple tables
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Schema Definition */}
-                        <div className="config-section">
-                          <div className="config-section-header">
-                            <h4 className="config-heading">Schema Definition</h4>
-                            <div className="schema-actions-group">
+                        <div className="table-card-body">
+                          {/* Source Configuration */}
+                          <div className="config-section">
+                            <h4 className="config-heading">Source File</h4>
+                            <div className="file-upload-area">
                               <input
                                 type="file"
-                                accept=".json"
-                                id={`schema-upload-${index}`}
-                                style={{ display: 'none' }}
-                                onChange={(e) => {
-                                  if (e.target.files[0]) {
-                                    handleSchemaUpload(index, e.target.files[0]);
-                                    e.target.value = ''; // Reset input
-                                  }
-                                }}
+                                accept=".csv"
+                                id={`file-${index}`}
+                                className="file-input"
+                                onChange={(e) => handleFileUpload(index, e.target.files[0])}
                               />
+                              <label htmlFor={`file-${index}`} className="file-upload-label">
+                                <Upload size={24} />
+                                <span>
+                                  {table.sourceFileName || 'Click to upload CSV file'}
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Target Configuration */}
+                          <div className="config-section">
+                            <h4 className="config-heading">Target Configuration</h4>
+                            <div className="config-row">
+                              <div className="input-wrapper">
+                                <label className="input-label">If table exists</label>
+                                <select
+                                  className="input-field"
+                                  value={table.ifExists}
+                                  onChange={(e) => handleTableChange(index, 'ifExists', e.target.value)}
+                                >
+                                  <option value="replace">Replace</option>
+                                  <option value="append">Append</option>
+                                  <option value="fail">Fail</option>
+                                </select>
+                              </div>
+
+                              <div className="input-wrapper">
+                                <label className="input-label">Priority</label>
+                                <input
+                                  type="number"
+                                  className="input-field"
+                                  min="1"
+                                  value={table.priority}
+                                  onChange={(e) =>
+                                    handleTableChange(index, 'priority', parseInt(e.target.value))
+                                  }
+                                />
+                              </div>
+                            </div>
+
+                            {/* Dependencies */}
+                            {formData.tables.length > 1 && (
+                              <div className="input-wrapper full-width">
+                                <label className="input-label">
+                                  This table depends on (optional)
+                                </label>
+                                <div className="dependencies-checkboxes">
+                                  {formData.tables
+                                    .filter((_, i) => i !== index)
+                                    .map((t, i) => {
+                                      const actualIndex = formData.tables.findIndex((tbl, idx) => idx !== index && (tbl.name === t.name || idx === i));
+                                      const tableName = t.name || `table_${actualIndex}`;
+                                      const isChecked = table.dependsOn.includes(tableName);
+
+                                      return (
+                                        <label key={i} className="dependency-checkbox-label">
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={(e) => {
+                                              const newDependsOn = e.target.checked
+                                                ? [...table.dependsOn, tableName]
+                                                : table.dependsOn.filter(dep => dep !== tableName);
+                                              handleTableChange(index, 'dependsOn', newDependsOn);
+                                            }}
+                                          />
+                                          <span>{t.name || `Table ${actualIndex + 1}`}</span>
+                                        </label>
+                                      );
+                                    })}
+                                </div>
+                                <span className="input-hint">
+                                  Select tables that must be loaded before this table.
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Schema Definition */}
+                          <div className="config-section">
+                            <div className="config-section-header">
+                              <h4 className="config-heading">Schema Definition</h4>
+                              <div className="schema-actions-group">
+                                <input
+                                  type="file"
+                                  accept=".json"
+                                  id={`schema-upload-${index}`}
+                                  style={{ display: 'none' }}
+                                  onChange={(e) => {
+                                    if (e.target.files[0]) {
+                                      handleSchemaUpload(index, e.target.files[0]);
+                                      e.target.value = ''; // Reset input
+                                    }
+                                  }}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    document.getElementById(`schema-upload-${index}`)?.click();
+                                  }}
+                                >
+                                  <Upload size={16} />
+                                  Upload Schema
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openSchemaBuilder(index)}
+                                >
+                                  <FileJson size={16} />
+                                  {table.schema.columns.length > 0
+                                    ? `${table.schema.columns.length} columns`
+                                    : 'Define Schema'}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Transformations */}
+                          <div className="config-section">
+                            <div className="config-section-header">
+                              <h4 className="config-heading">Transformations</h4>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
-                                  document.getElementById(`schema-upload-${index}`)?.click();
-                                }}
+                                onClick={() => handleAddTransformation(index)}
                               >
-                                <Upload size={16} />
-                                Upload Schema
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openSchemaBuilder(index)}
-                              >
-                                <FileJson size={16} />
-                                {table.schema.columns.length > 0
-                                  ? `${table.schema.columns.length} columns`
-                                  : 'Define Schema'}
+                                <Plus size={16} />
+                                Add
                               </Button>
                             </div>
-                          </div>
-                        </div>
-
-                        {/* Transformations */}
-                        <div className="config-section">
-                          <div className="config-section-header">
-                            <h4 className="config-heading">Transformations</h4>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleAddTransformation(index)}
-                            >
-                              <Plus size={16} />
-                              Add
-                            </Button>
-                          </div>
-                          {table.transformations.map((transform, tIndex) => (
-                            <div key={tIndex} className="transform-row">
-                              {/* Column selector - dropdown if columns exist, text input otherwise */}
-                              {table.schema.columns.length > 0 ? (
-                                <select
-                                  className="input-field compact"
-                                  value={transform.column}
-                                  onChange={(e) =>
-                                    handleTransformationChange(index, tIndex, 'column', e.target.value)
-                                  }
-                                >
-                                  <option value="">Select column...</option>
-                                  {table.schema.columns.map((col, colIdx) => (
-                                    <option key={colIdx} value={col.name}>
-                                      {col.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <input
-                                  type="text"
-                                  className="input-field compact"
-                                  placeholder="Column name"
-                                  value={transform.column}
-                                  onChange={(e) =>
-                                    handleTransformationChange(index, tIndex, 'column', e.target.value)
-                                  }
-                                />
-                              )}
-                              <select
-                                className="input-field compact"
-                                value={transform.action}
-                                onChange={(e) =>
-                                  handleTransformationChange(index, tIndex, 'action', e.target.value)
-                                }
-                              >
-                                {transformationOptions.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                              {transform.action === 'round' && (
-                                <input
-                                  type="number"
-                                  className="input-field compact"
-                                  placeholder="Decimals"
-                                  value={transform.decimals || ''}
-                                  onChange={(e) =>
-                                    handleTransformationChange(
-                                      index,
-                                      tIndex,
-                                      'decimals',
-                                      parseInt(e.target.value)
-                                    )
-                                  }
-                                />
-                              )}
-                              <button
-                                className="icon-button"
-                                onClick={() => handleRemoveTransformation(index, tIndex)}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Validations */}
-                        <div className="config-section">
-                          <div className="config-section-header">
-                            <h4 className="config-heading">Validations</h4>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleAddValidation(index)}
-                            >
-                              <Plus size={16} />
-                              Add
-                            </Button>
-                          </div>
-                          {table.validations.map((validation, vIndex) => (
-                            <div key={vIndex} className="transform-row">
-                              {/* Column selector - dropdown if columns exist, text input otherwise */}
-                              {table.schema.columns.length > 0 ? (
-                                <select
-                                  className="input-field compact"
-                                  value={validation.column}
-                                  onChange={(e) =>
-                                    handleValidationChange(index, vIndex, 'column', e.target.value)
-                                  }
-                                >
-                                  <option value="">Select column...</option>
-                                  {table.schema.columns.map((col, colIdx) => (
-                                    <option key={colIdx} value={col.name}>
-                                      {col.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <input
-                                  type="text"
-                                  className="input-field compact"
-                                  placeholder="Column name"
-                                  value={validation.column}
-                                  onChange={(e) =>
-                                    handleValidationChange(index, vIndex, 'column', e.target.value)
-                                  }
-                                />
-                              )}
-                              <select
-                                className="input-field compact"
-                                value={validation.rule}
-                                onChange={(e) =>
-                                  handleValidationChange(index, vIndex, 'rule', e.target.value)
-                                }
-                              >
-                                {validationOptions.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                              {validationOptions.find((opt) => opt.value === validation.rule)
-                                ?.needsValue && (
+                            {table.transformations.map((transform, tIndex) => (
+                              <div key={tIndex} className="transform-row">
+                                {/* Column selector - dropdown if columns exist, text input otherwise */}
+                                {table.schema.columns.length > 0 ? (
+                                  <select
+                                    className="input-field compact"
+                                    value={transform.column}
+                                    onChange={(e) =>
+                                      handleTransformationChange(index, tIndex, 'column', e.target.value)
+                                    }
+                                  >
+                                    <option value="">Select column...</option>
+                                    {table.schema.columns.map((col, colIdx) => (
+                                      <option key={colIdx} value={col.name}>
+                                        {col.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
                                   <input
                                     type="text"
                                     className="input-field compact"
-                                    placeholder="Value"
-                                    value={validation.value || ''}
+                                    placeholder="Column name"
+                                    value={transform.column}
                                     onChange={(e) =>
-                                      handleValidationChange(index, vIndex, 'value', e.target.value)
+                                      handleTransformationChange(index, tIndex, 'column', e.target.value)
                                     }
                                   />
                                 )}
-                              <button
-                                className="icon-button"
-                                onClick={() => handleRemoveValidation(index, vIndex)}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Encryption */}
-                        <div className="config-section">
-                          <div className="config-section-header">
-                            <h4 className="config-heading">Encryption</h4>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleAddEncryption(index)}
-                            >
-                              <Plus size={16} />
-                              Add
-                            </Button>
-                          </div>
-                          {table.encryption.map((encrypt, eIndex) => (
-                            <div key={eIndex} className="transform-row">
-                              {/* Column selector - dropdown if columns exist, text input otherwise */}
-                              {table.schema.columns.length > 0 ? (
                                 <select
                                   className="input-field compact"
-                                  value={encrypt.column}
+                                  value={transform.action}
                                   onChange={(e) =>
-                                    handleEncryptionChange(index, eIndex, 'column', e.target.value)
+                                    handleTransformationChange(index, tIndex, 'action', e.target.value)
                                   }
                                 >
-                                  <option value="">Select column...</option>
-                                  {table.schema.columns.map((col, colIdx) => (
-                                    <option key={colIdx} value={col.name}>
-                                      {col.name}
+                                  {transformationOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
                                     </option>
                                   ))}
                                 </select>
-                              ) : (
-                                <input
-                                  type="text"
-                                  className="input-field compact"
-                                  placeholder="Column name"
-                                  value={encrypt.column}
-                                  onChange={(e) =>
-                                    handleEncryptionChange(index, eIndex, 'column', e.target.value)
-                                  }
-                                />
-                              )}
-                              <select
-                                className="input-field compact"
-                                value={encrypt.method}
-                                onChange={(e) =>
-                                  handleEncryptionChange(index, eIndex, 'method', e.target.value)
-                                }
+                                {transform.action === 'round' && (
+                                  <input
+                                    type="number"
+                                    className="input-field compact"
+                                    placeholder="Decimals"
+                                    value={transform.decimals || ''}
+                                    onChange={(e) =>
+                                      handleTransformationChange(
+                                        index,
+                                        tIndex,
+                                        'decimals',
+                                        parseInt(e.target.value)
+                                      )
+                                    }
+                                  />
+                                )}
+                                <button
+                                  className="icon-button"
+                                  onClick={() => handleRemoveTransformation(index, tIndex)}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Validations */}
+                          <div className="config-section">
+                            <div className="config-section-header">
+                              <h4 className="config-heading">Validations</h4>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleAddValidation(index)}
                               >
-                                <option value="aes256">AES-256 (Reversible)</option>
-                                <option value="fpe">FPE (Format-Preserving)</option>
-                              </select>
-                              <button
-                                className="icon-button"
-                                onClick={() => handleRemoveEncryption(index, eIndex)}
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                                <Plus size={16} />
+                                Add
+                              </Button>
                             </div>
-                          ))}
+                            {table.validations.map((validation, vIndex) => (
+                              <div key={vIndex} className="transform-row">
+                                {/* Column selector - dropdown if columns exist, text input otherwise */}
+                                {table.schema.columns.length > 0 ? (
+                                  <select
+                                    className="input-field compact"
+                                    value={validation.column}
+                                    onChange={(e) =>
+                                      handleValidationChange(index, vIndex, 'column', e.target.value)
+                                    }
+                                  >
+                                    <option value="">Select column...</option>
+                                    {table.schema.columns.map((col, colIdx) => (
+                                      <option key={colIdx} value={col.name}>
+                                        {col.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    className="input-field compact"
+                                    placeholder="Column name"
+                                    value={validation.column}
+                                    onChange={(e) =>
+                                      handleValidationChange(index, vIndex, 'column', e.target.value)
+                                    }
+                                  />
+                                )}
+                                <select
+                                  className="input-field compact"
+                                  value={validation.rule}
+                                  onChange={(e) =>
+                                    handleValidationChange(index, vIndex, 'rule', e.target.value)
+                                  }
+                                >
+                                  {validationOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                {validationOptions.find((opt) => opt.value === validation.rule)
+                                  ?.needsValue && (
+                                    <input
+                                      type="text"
+                                      className="input-field compact"
+                                      placeholder="Value"
+                                      value={validation.value || ''}
+                                      onChange={(e) =>
+                                        handleValidationChange(index, vIndex, 'value', e.target.value)
+                                      }
+                                    />
+                                  )}
+                                <button
+                                  className="icon-button"
+                                  onClick={() => handleRemoveValidation(index, vIndex)}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Encryption */}
+                          <div className="config-section">
+                            <div className="config-section-header">
+                              <h4 className="config-heading">Encryption</h4>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleAddEncryption(index)}
+                              >
+                                <Plus size={16} />
+                                Add
+                              </Button>
+                            </div>
+                            {table.encryption.map((encrypt, eIndex) => (
+                              <div key={eIndex} className="transform-row">
+                                {/* Column selector - dropdown if columns exist, text input otherwise */}
+                                {table.schema.columns.length > 0 ? (
+                                  <select
+                                    className="input-field compact"
+                                    value={encrypt.column}
+                                    onChange={(e) =>
+                                      handleEncryptionChange(index, eIndex, 'column', e.target.value)
+                                    }
+                                  >
+                                    <option value="">Select column...</option>
+                                    {table.schema.columns.map((col, colIdx) => (
+                                      <option key={colIdx} value={col.name}>
+                                        {col.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    className="input-field compact"
+                                    placeholder="Column name"
+                                    value={encrypt.column}
+                                    onChange={(e) =>
+                                      handleEncryptionChange(index, eIndex, 'column', e.target.value)
+                                    }
+                                  />
+                                )}
+                                <select
+                                  className="input-field compact"
+                                  value={encrypt.method}
+                                  onChange={(e) =>
+                                    handleEncryptionChange(index, eIndex, 'method', e.target.value)
+                                  }
+                                >
+                                  <option value="aes256">AES-256 (Reversible)</option>
+                                  <option value="fpe">FPE (Format-Preserving)</option>
+                                </select>
+                                <button
+                                  className="icon-button"
+                                  onClick={() => handleRemoveEncryption(index, eIndex)}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    </Card>
+                      </Card>
+                    )
                   ))}
                 </div>
               )}
@@ -1120,29 +1163,6 @@ const CreatePipeline = () => {
                       <div className="table-card-header">
                         <div className="table-header-left">
                           <Badge variant="success">Derived {index + 1}</Badge>
-                          <select
-                            className="input-field"
-                            value={derivedTable.name}
-                            onChange={(e) => handleDerivedTableChange(index, 'name', e.target.value)}
-                          >
-                            <option value="">Select table name...</option>
-                            <option value="patient_summary">patient_summary</option>
-                            <option value="covid_patients">covid_patients</option>
-                            <option value="encounter_analytics">encounter_analytics</option>
-                            <option value="medication_analytics">medication_analytics</option>
-                            <option value="provider_performance">provider_performance</option>
-                            <option value="payer_analytics">payer_analytics</option>
-                            <option value="cost_analysis">cost_analysis</option>
-                            <option value="patient_demographics">patient_demographics</option>
-                            <option value="custom">Custom (enter below)</option>
-                          </select>
-                          {derivedTable.name === 'custom' && (
-                            <Input
-                              placeholder="Enter custom table name"
-                              value={derivedTable.customName || ''}
-                              onChange={(e) => handleDerivedTableChange(index, 'customName', e.target.value)}
-                            />
-                          )}
                         </div>
                         <button
                           className="icon-button danger"
@@ -1201,28 +1221,34 @@ const CreatePipeline = () => {
 
                           {/* Dependencies */}
                           {formData.tables.length > 0 && (
-                            <div className="input-wrapper">
-                              <label className="input-label">Depends on (select base tables)</label>
-                              <select
-                                className="input-field"
-                                multiple
-                                value={derivedTable.dependsOn}
-                                onChange={(e) =>
-                                  handleDerivedTableChange(
-                                    index,
-                                    'dependsOn',
-                                    Array.from(e.target.selectedOptions, (option) => option.value)
-                                  )
-                                }
-                              >
-                                {formData.tables.map((t, i) => (
-                                  <option key={i} value={t.name || `table_${i}`}>
-                                    {t.name || `Table ${i + 1}`}
-                                  </option>
-                                ))}
-                              </select>
+                            <div className="input-wrapper full-width">
+                              <label className="input-label">
+                                This derived table depends on (select base tables)
+                              </label>
+                              <div className="dependencies-checkboxes">
+                                {formData.tables.map((t, i) => {
+                                  const tableName = t.name || `table_${i}`;
+                                  const isChecked = derivedTable.dependsOn.includes(tableName);
+
+                                  return (
+                                    <label key={i} className="dependency-checkbox-label">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          const newDependsOn = e.target.checked
+                                            ? [...derivedTable.dependsOn, tableName]
+                                            : derivedTable.dependsOn.filter(dep => dep !== tableName);
+                                          handleDerivedTableChange(index, 'dependsOn', newDependsOn);
+                                        }}
+                                      />
+                                      <span>{t.name || `Table ${i + 1}`}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
                               <span className="input-hint">
-                                Hold Ctrl/Cmd to select multiple tables
+                                Select base tables that must be loaded before this derived table.
                               </span>
                             </div>
                           )}
