@@ -165,11 +165,12 @@ const Dashboard = () => {
                 Manage Configs
               </Button>
             </Link>
-            <Button variant="outline" disabled className="coming-soon-action">
-              <CheckCircle size={20} />
-              Verify Integrity
-              <span className="action-coming-soon-tag">Soon</span>
-            </Button>
+            <Link to="/verify-integrity">
+              <Button variant="outline">
+                <CheckCircle size={20} />
+                Verify Integrity
+              </Button>
+            </Link>
           </div>
         </div>
 

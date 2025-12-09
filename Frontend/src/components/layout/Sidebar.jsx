@@ -1,11 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  GitBranch, 
-  Activity, 
-  Shield, 
-  Users, 
+import {
+  LayoutDashboard,
+  GitBranch,
+  Activity,
+  Shield,
+  Users,
   FileText,
   Settings,
   FileCode2
@@ -18,7 +18,7 @@ const Sidebar = () => {
     { to: '/pipelines', icon: GitBranch, label: 'Pipelines' },
     { to: '/my-configs', icon: FileCode2, label: 'My Configs' },
     { to: '/executions', icon: Activity, label: 'Executions' },
-    { to: '/integrity', icon: Shield, label: 'Integrity' },
+    { to: '/verify-integrity', icon: Shield, label: 'Integrity' },
     { to: '/users', icon: Users, label: 'Users', adminOnly: true },
     { to: '/audit-logs', icon: FileText, label: 'Audit Logs' },
     { to: '/settings', icon: Settings, label: 'Settings' },
@@ -31,7 +31,7 @@ const Sidebar = () => {
           <NavLink
             key={item.to}
             to={item.to}
-            className={({ isActive }) => 
+            className={({ isActive }) =>
               `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`
             }
           >

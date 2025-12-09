@@ -12,6 +12,7 @@ import CreatePipeline from './pages/CreatePipeline';
 import Profile from './pages/Profile';
 import MyConfigs from './pages/MyConfigs';
 import Executions from './pages/Executions';
+import VerifyIntegrity from './pages/VerifyIntegrity';
 
 function App() {
   return (
@@ -56,6 +57,12 @@ function App() {
           <Route path="/executions" element={
             <ProtectedRoute>
               <Executions />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/verify-integrity" element={
+            <ProtectedRoute>
+              <VerifyIntegrity />
             </ProtectedRoute>
           } />
 

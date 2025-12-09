@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings, configure_airflow_service
 from app.database import engine, Base
-from app.routes import auth_router, users_router, pipeline_configs_router, pipeline_executions_router, audit_logs_router
+from app.routes import auth_router, users_router, pipeline_configs_router, pipeline_executions_router, audit_logs_router, verification_router
 import logging
 
 # Configure logging
@@ -38,6 +38,7 @@ app.include_router(users_router, prefix="/api/v1")
 app.include_router(pipeline_configs_router, prefix="/api/v1")
 app.include_router(pipeline_executions_router, prefix="/api/v1")
 app.include_router(audit_logs_router, prefix="/api/v1")
+app.include_router(verification_router, prefix="/api/v1")
 
 
 @app.on_event("startup")

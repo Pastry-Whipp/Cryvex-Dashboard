@@ -1,5 +1,3 @@
-ETL/
-
 # Bytecode / cache
 __pycache__/
 *.py[cod]
