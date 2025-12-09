@@ -34,6 +34,9 @@ export const generateYAMLConfig = (formData) => {
     pipeline:
       batch_size: 1000
       log_level: "INFO"
+    
+    # Encryption configuration
+    ${generateEncryptionYAML(formData.tables)}
   
   # ==================== EXECUTION SETTINGS ====================
   execution:
@@ -49,6 +52,33 @@ export const generateYAMLConfig = (formData) => {
   ${formData.derivedTables && formData.derivedTables.length > 0 ? `derived_tables:\n${generateDerivedTablesYAML(formData.derivedTables)}` : '# No derived tables defined'}
   `;
   return yaml;
+};
+
+const generateEncryptionYAML = (tables) => {
+  // Collect all encryption configurations from all tables
+  const allEncryptions = [];
+  tables.forEach(table => {
+    if (table.encryption && table.encryption.length > 0) {
+      table.encryption.forEach(enc => {
+        if (enc.column && enc.method) {
+          allEncryptions.push(enc);
+        }
+      });
+    }
+  });
+
+  if (allEncryptions.length === 0) {
+    return `encryption:
+      enabled: false`;
+  }
+
+  return `encryption:
+      enabled: true
+      master_key: "\${CRYVEX_MASTER_KEY}"  # Reads from environment variable
+      
+      columns:
+${allEncryptions.map(enc => `        - column: "${enc.column}"
+          method: "${enc.method}"`).join('\n        \n')}`;
 };
 
 const generateTablesYAML = (tables) => {

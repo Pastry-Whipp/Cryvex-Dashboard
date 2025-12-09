@@ -136,7 +136,8 @@ const CreatePipeline = () => {
         columns: []
       },
       transformations: [],
-      validations: []
+      validations: [],
+      encryption: []  // Array of {column, method} objects
     };
     setFormData({
       ...formData,
@@ -291,6 +292,28 @@ const CreatePipeline = () => {
   const handleValidationChange = (tableIndex, validIndex, field, value) => {
     const newTables = [...formData.tables];
     newTables[tableIndex].validations[validIndex][field] = value;
+    setFormData({ ...formData, tables: newTables });
+  };
+
+  // Encryption Handlers
+  const handleAddEncryption = (tableIndex) => {
+    const newTables = [...formData.tables];
+    newTables[tableIndex].encryption.push({
+      column: '',
+      method: 'aes256'
+    });
+    setFormData({ ...formData, tables: newTables });
+  };
+
+  const handleRemoveEncryption = (tableIndex, encryptIndex) => {
+    const newTables = [...formData.tables];
+    newTables[tableIndex].encryption.splice(encryptIndex, 1);
+    setFormData({ ...formData, tables: newTables });
+  };
+
+  const handleEncryptionChange = (tableIndex, encryptIndex, field, value) => {
+    const newTables = [...formData.tables];
+    newTables[tableIndex].encryption[encryptIndex][field] = value;
     setFormData({ ...formData, tables: newTables });
   };
 
@@ -987,6 +1010,68 @@ const CreatePipeline = () => {
                               <button
                                 className="icon-button"
                                 onClick={() => handleRemoveValidation(index, vIndex)}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Encryption */}
+                        <div className="config-section">
+                          <div className="config-section-header">
+                            <h4 className="config-heading">Encryption</h4>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleAddEncryption(index)}
+                            >
+                              <Plus size={16} />
+                              Add
+                            </Button>
+                          </div>
+                          {table.encryption.map((encrypt, eIndex) => (
+                            <div key={eIndex} className="transform-row">
+                              {/* Column selector - dropdown if columns exist, text input otherwise */}
+                              {table.schema.columns.length > 0 ? (
+                                <select
+                                  className="input-field compact"
+                                  value={encrypt.column}
+                                  onChange={(e) =>
+                                    handleEncryptionChange(index, eIndex, 'column', e.target.value)
+                                  }
+                                >
+                                  <option value="">Select column...</option>
+                                  {table.schema.columns.map((col, colIdx) => (
+                                    <option key={colIdx} value={col.name}>
+                                      {col.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  className="input-field compact"
+                                  placeholder="Column name"
+                                  value={encrypt.column}
+                                  onChange={(e) =>
+                                    handleEncryptionChange(index, eIndex, 'column', e.target.value)
+                                  }
+                                />
+                              )}
+                              <select
+                                className="input-field compact"
+                                value={encrypt.method}
+                                onChange={(e) =>
+                                  handleEncryptionChange(index, eIndex, 'method', e.target.value)
+                                }
+                              >
+                                <option value="aes256">AES-256 (Reversible)</option>
+                                <option value="fpe">FPE (Format-Preserving)</option>
+                              </select>
+                              <button
+                                className="icon-button"
+                                onClick={() => handleRemoveEncryption(index, eIndex)}
                               >
                                 <Trash2 size={16} />
                               </button>
