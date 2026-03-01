@@ -6,6 +6,10 @@ from typing import Optional
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
+    AIRFLOW_DB_URL: str = "postgresql://postgres:postgres@localhost:5432/postgres"
+    BLOCKCHAIN_CONTRACT_ADDRESS: str = ""
+    BLOCKCHAIN_PROVIDER_URL: str = "http://localhost:8545"
+    BLOCKCHAIN_PRIVATE_KEY: str = ""
     
     # JWT
     SECRET_KEY: str
@@ -50,17 +54,3 @@ def configure_airflow_service():
         logger.info(f"Airflow service configured. is_configured={airflow_service.is_configured}")
     else:
         logger.warning("AIRFLOW_API_URL not set. Airflow integration disabled.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-

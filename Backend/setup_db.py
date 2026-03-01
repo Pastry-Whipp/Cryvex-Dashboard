@@ -11,7 +11,7 @@ def create_database():
         # Connect to PostgreSQL server
         connection = psycopg2.connect(
             user="postgres",
-            password="saibi",
+            password="123",
             host="localhost",
             port="5433"
         )

@@ -172,29 +172,22 @@ const generateDerivedTablesYAML = (derivedTables) => {
 const generateTransformationsYAML = (transformations) => {
   if (!transformations || transformations.length === 0) return '';
 
-  return `
-      # Transformations
-      transformations:
-        inline:
-  ${transformations.map(t => {
-    let line = `        - column: "${t.column}"\n          action: "${t.action}"`;
+  const lines = transformations.map(t => {
+    let line = `          - column: "${t.column}"\n            action: "${t.action}"`;
     if (t.action === 'round' && t.decimals) {
-      line += `\n          decimals: ${t.decimals}`;
+      line += `\n            decimals: ${t.decimals}`;
     }
     return line;
-  }).join('\n')}
-  `;
+  }).join('\n');
+
+  return `\n      # Transformations\n      transformations:\n        inline:\n${lines}\n`;
 };
 
 const generateValidationsYAML = (validations) => {
   if (!validations || validations.length === 0) return '';
 
-  return `
-      # Validations
-      validations:
-        inline:
-  ${validations.map(v => {
-    let line = `        - column: "${v.column}"\n          rule: "${v.rule}"`;
+  const lines = validations.map(v => {
+    let line = `          - column: "${v.column}"\n            rule: "${v.rule}"`;
 
     const ruleOption = [
       { value: 'min_value', needsValue: true },
@@ -206,16 +199,16 @@ const generateValidationsYAML = (validations) => {
 
     if (ruleOption?.needsValue && v.value) {
       if (ruleOption.isList) {
-        // Parse comma-separated values for in_list
         const values = v.value.split(',').map(val => val.trim());
-        line += `\n          values: [${values.map(val => `"${val}"`).join(', ')}]`;
+        line += `\n            values: [${values.map(val => `"${val}"`).join(', ')}]`;
       } else {
-        line += `\n          value: ${v.value}`;
+        line += `\n            value: ${v.value}`;
       }
     }
     return line;
-  }).join('\n')}
-  `;
+  }).join('\n');
+
+  return `\n      # Validations\n      validations:\n        inline:\n${lines}\n`;
 };
 
 export const generateJSONSchema = (table, domain = "generic") => {

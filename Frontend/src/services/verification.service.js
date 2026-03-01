@@ -136,3 +136,35 @@ class VerificationService {
 }
 
 export const verificationService = new VerificationService();
+
+
+// ============================================================
+// Merkle Proof API methods
+// ============================================================
+
+class MerkleProofService {
+    async verifyRow(tableName, rowData) {
+        const response = await api.post('/merkle-proof/verify', {
+            table_name: tableName,
+            row_data: rowData
+        });
+        return response.data;
+    }
+
+    async verifyTable(tableName) {
+        const response = await api.get(`/merkle-proof/verify-table/${tableName}`);
+        return response.data;
+    }
+
+    async getRootHistory(tableName) {
+        const response = await api.get(`/merkle-proof/root-history/${tableName}`);
+        return response.data;
+    }
+
+    async getVerifiedTables() {
+        const response = await api.get('/merkle-proof/tables');
+        return response.data;
+    }
+}
+
+export const merkleProofService = new MerkleProofService();
