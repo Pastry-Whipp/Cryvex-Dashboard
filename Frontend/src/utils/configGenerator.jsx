@@ -26,9 +26,9 @@ export const generateYAMLConfig = (formData) => {
       enabled: ${formData.blockchain.enabled}
       network: "${formData.blockchain.network}"
       rpc_url: "${formData.blockchain.rpcUrl}"
-      contract_address: "0xed6545fc359A2D8467a39b01078E4e69BeD461Ad"
-      private_key: "0x21a727d91be3237729094fa7b892fb22a7a4db71f6a16cb8832e55a2afb04a2d"
-      abi_file: "/usr/local/airflow/include/etl_modules/abi.json"
+      contract_address: "${formData.blockchain.contractAddress}"
+      private_key: "${formData.blockchain.privateKey}"
+      abi_file: "/opt/airflow/include/etl_modules/abi.json"
     
     # Pipeline settings (shared)
     pipeline:
@@ -102,7 +102,7 @@ const generateTablesYAML = (tables) => {
       # Source configuration
       source:
         file:
-          path: "/usr/local/airflow/datasets/data/${table.sourceFileName || 'data.csv'}"
+          path: "/opt/airflow/datasets/data/${table.sourceFileName || 'data.csv'}"
           type: "csv"
           encoding: "utf-8"
           delimiter: ","
@@ -121,7 +121,7 @@ const generateTablesYAML = (tables) => {
       
       # Schema definition
       schema:
-        file: "/usr/local/airflow/datasets/schemas/${tableName}_schema.json"
+        file: "/opt/airflow/datasets/schemas/${tableName}_schema.json"
       ${generateTransformationsYAML(table.transformations)}${generateValidationsYAML(table.validations)}`;
   }).join('\n');
 };

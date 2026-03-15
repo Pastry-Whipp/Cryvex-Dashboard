@@ -46,4 +46,14 @@ export const authService = {
     const response = await api.get('/users/me');
     return response.data;
   },
+
+  updateProfile: async (data) => {
+    const response = await api.put('/users/me', data);
+    return response.data;
+  },
+
+  getUserByUsername: async (username) => {
+    const response = await api.get(`/users/${username}`);
+    return response.data;
+  },
 };

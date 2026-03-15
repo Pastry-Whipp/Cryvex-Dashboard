@@ -5,7 +5,7 @@ export const dataExplorerService = {
    * Check if target database is accessible
    */
   checkHealth: async () => {
-    const response = await api.get('/data-explorer/health');
+    const response = await api.get('/pipeline-data/health');
     return response.data;
   },
 
@@ -13,7 +13,7 @@ export const dataExplorerService = {
    * Get list of user's pipelines
    */
   getUserPipelines: async () => {
-    const response = await api.get('/data-explorer/pipelines');
+    const response = await api.get('/pipeline-data/pipelines');
     return response.data;
   },
 
@@ -22,7 +22,7 @@ export const dataExplorerService = {
    * @param {number} pipelineId - Pipeline ID
    */
   getPipelineTables: async (pipelineId) => {
-    const response = await api.get(`/data-explorer/pipelines/${pipelineId}/tables`);
+    const response = await api.get(`/pipeline-data/pipelines/${pipelineId}/tables`);
     return response.data;
   },
 
@@ -34,7 +34,7 @@ export const dataExplorerService = {
    */
   getTableColumns: async (pipelineId, tableName, schema = 'public') => {
     const response = await api.get(
-      `/data-explorer/pipelines/${pipelineId}/tables/${tableName}/columns`,
+      `/pipeline-data/tables/${tableName}/columns`,
       { params: { schema } }
     );
     return response.data;
@@ -48,7 +48,7 @@ export const dataExplorerService = {
    */
   getTableData: async (pipelineId, tableName, params = {}) => {
     const response = await api.get(
-      `/data-explorer/pipelines/${pipelineId}/tables/${tableName}/data`,
+      `/pipeline-data/tables/${tableName}/data`,
       {
         params: {
           schema: params.schema || 'public',
@@ -64,13 +64,31 @@ export const dataExplorerService = {
   },
 
   /**
+   * Get table sample data
+   * @param {number} pipelineId - Pipeline ID
+   * @param {string} tableName - Table name
+   * @param {Object} params - Query parameters
+   */
+  getTableSample: async (pipelineId, tableName, params = {}) => {
+    const response = await api.get(
+      `/pipeline-data/tables/${tableName}/sample`,
+      {
+        params: {
+          schema: params.schema || 'public',
+        }
+      }
+    );
+    return response.data;
+  },
+
+  /**
    * Execute a custom SQL query
    * @param {string} query - SQL SELECT query
    * @param {number} pipelineId - Pipeline ID for table restrictions
    * @param {number} limit - Maximum rows
    */
   executeQuery: async (query, pipelineId, limit = 1000) => {
-    const response = await api.post('/data-explorer/query', {
+    const response = await api.post('/pipeline-data/query', {
       query,
       pipeline_id: pipelineId,
       limit

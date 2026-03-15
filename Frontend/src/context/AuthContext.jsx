@@ -51,16 +51,26 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const data = await authService.register(userData);
-      // Backend signup currently returns the created user, not tokens
-      setUser(data);
+      // Step 1: Create the account
+      await authService.register(userData);
+
+      // Step 2: Auto-login with the new credentials
+      const loginData = await authService.login(userData.username, userData.password);
+      localStorage.setItem('accessToken', loginData.access_token || loginData.data?.access_token);
+      if (loginData.refresh_token || loginData.data?.refresh_token) {
+        localStorage.setItem('refreshToken', loginData.refresh_token || loginData.data?.refresh_token);
+      }
+
+      // Step 3: Fetch user profile
+      const userProfile = await authService.getCurrentUser();
+      setUser(userProfile);
       setIsAuthenticated(true);
-      
+
       return { success: true };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || error.response?.data?.error?.message || 'Registration failed' 
+      return {
+        success: false,
+        error: error.response?.data?.detail || error.response?.data?.error?.message || 'Registration failed'
       };
     }
   };
