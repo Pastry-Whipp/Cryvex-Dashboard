@@ -299,7 +299,7 @@ const DataExplorer = () => {
             <Layers size={48} />
             <h3>No Pipelines Found</h3>
             <p>You haven't created any pipelines yet.</p>
-            <Button variant="primary" onClick={() => window.location.href = '/create-pipeline'}>
+            <Button variant="primary" onClick={() => window.location.href = '/pipelines/create'}>
               Create Your First Pipeline
             </Button>
           </div>

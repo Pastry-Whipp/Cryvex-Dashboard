@@ -5,8 +5,7 @@ import {
   GitBranch,
   Activity,
   Shield,
-  Users,
-  FileText,
+  Database,
   Settings,
   FileCode2
 } from 'lucide-react';
@@ -19,8 +18,7 @@ const Sidebar = () => {
     { to: '/my-configs', icon: FileCode2, label: 'My Configs' },
     { to: '/executions', icon: Activity, label: 'Executions' },
     { to: '/verify-integrity', icon: Shield, label: 'Integrity' },
-    { to: '/users', icon: Users, label: 'Users', adminOnly: true },
-    { to: '/audit-logs', icon: FileText, label: 'Audit Logs' },
+    { to: '/data-explorer', icon: Database, label: 'Data Explorer' },
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 

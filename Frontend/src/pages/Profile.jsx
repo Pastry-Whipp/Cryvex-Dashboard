@@ -220,9 +220,11 @@ const Profile = () => {
                 <h3>Security</h3>
                 <p>Update your password and security settings</p>
               </div>
-              <Button variant="outline" size="sm" disabled>
-                Coming Soon
-              </Button>
+              <Link to="/settings">
+                <Button variant="outline" size="sm">
+                  Settings
+                </Button>
+              </Link>
             </Card>
 
             <Card className="action-card">
@@ -233,9 +235,11 @@ const Profile = () => {
                 <h3>Preferences</h3>
                 <p>Customize your dashboard experience</p>
               </div>
-              <Button variant="outline" size="sm" disabled>
-                Coming Soon
-              </Button>
+              <Link to="/settings">
+                <Button variant="outline" size="sm">
+                  Settings
+                </Button>
+              </Link>
             </Card>
           </div>
 

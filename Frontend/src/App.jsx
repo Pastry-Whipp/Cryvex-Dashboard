@@ -13,6 +13,8 @@ import Profile from './pages/Profile';
 import MyConfigs from './pages/MyConfigs';
 import Executions from './pages/Executions';
 import VerifyIntegrity from './pages/VerifyIntegrity';
+import DataExplorer from './pages/DataExplorer';
+import SettingsPage from './pages/Settings';
 
 function App() {
   return (
@@ -63,6 +65,18 @@ function App() {
           <Route path="/verify-integrity" element={
             <ProtectedRoute>
               <VerifyIntegrity />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/data-explorer" element={
+            <ProtectedRoute>
+              <DataExplorer />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <SettingsPage />
             </ProtectedRoute>
           } />
 

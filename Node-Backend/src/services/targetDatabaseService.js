@@ -67,7 +67,9 @@ class TargetDatabaseService {
     const result = await queryTargetDb(sql, [schema, ...configuredTables]);
     const tables = result.rows;
 
+    const existingNames = tables.map(t => t.table_name);
     const enriched = [];
+
     for (const table of tables) {
       try {
         const countResult = await queryTargetDb(`SELECT COUNT(*) as row_count FROM "${schema}"."${table.table_name}"`);
@@ -76,7 +78,22 @@ class TargetDatabaseService {
         table.row_count = 0;
       }
       table.pipeline_config_id = pipelineConfigId;
+      table.exists = true;
       enriched.push(table);
+    }
+
+    // Include configured tables that don't exist in DB yet
+    for (const name of configuredTables) {
+      if (!existingNames.includes(name)) {
+        enriched.push({
+          table_name: name,
+          column_count: 0,
+          size: '0 bytes',
+          row_count: 0,
+          pipeline_config_id: pipelineConfigId,
+          exists: false
+        });
+      }
     }
 
     return enriched;

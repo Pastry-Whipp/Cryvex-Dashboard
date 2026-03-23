@@ -35,7 +35,7 @@ export const dataExplorerService = {
   getTableColumns: async (pipelineId, tableName, schema = 'public') => {
     const response = await api.get(
       `/pipeline-data/tables/${tableName}/columns`,
-      { params: { schema } }
+      { params: { pipeline_id: pipelineId, schema } }
     );
     return response.data;
   },
@@ -51,6 +51,7 @@ export const dataExplorerService = {
       `/pipeline-data/tables/${tableName}/data`,
       {
         params: {
+          pipeline_id: pipelineId,
           schema: params.schema || 'public',
           page: params.page || 1,
           page_size: params.pageSize || 50,
@@ -74,6 +75,7 @@ export const dataExplorerService = {
       `/pipeline-data/tables/${tableName}/sample`,
       {
         params: {
+          pipeline_id: pipelineId,
           schema: params.schema || 'public',
         }
       }
@@ -88,11 +90,10 @@ export const dataExplorerService = {
    * @param {number} limit - Maximum rows
    */
   executeQuery: async (query, pipelineId, limit = 1000) => {
-    const response = await api.post('/pipeline-data/query', {
-      query,
-      pipeline_id: pipelineId,
-      limit
-    });
+    const response = await api.post(
+      `/pipeline-data/query?pipeline_id=${pipelineId}`,
+      { query, limit }
+    );
     return response.data;
   },
 
