@@ -4,6 +4,12 @@ const { ACTION_TYPE, ENTITY_TYPE } = require('../models/AuditLog');
 const { auditService } = require('../services/auditService');
 const { airflowService } = require('../services/airflowService');
 
+function getExecutionType(airflow_dag_id) {
+  if (!airflow_dag_id) return 'etl';
+  if (airflow_dag_id.includes('verify')) return 'verify';
+  return 'etl';
+}
+
 function serializeExecution(e) {
   return {
     id: e.id,
@@ -17,7 +23,8 @@ function serializeExecution(e) {
     logs: e.logs,
     error_message: e.error_message,
     task_progress: e.task_progress,
-    created_at: e.created_at
+    created_at: e.created_at,
+    execution_type: getExecutionType(e.airflow_dag_id)
   };
 }
 

@@ -21,17 +21,36 @@ class TargetDatabaseService {
       const config = yaml.load(yamlConfig);
       const tables = [];
 
+      // Format 1: config.tables.<name>.target.table_name (base tables)
+      if (config.tables && typeof config.tables === 'object') {
+        Object.values(config.tables).forEach(t => {
+          if (t?.target?.table_name) tables.push(t.target.table_name);
+        });
+      }
+
+      // Format 2: config.derived_tables.<name>.target.table_name
+      if (config.derived_tables && typeof config.derived_tables === 'object') {
+        Object.values(config.derived_tables).forEach(t => {
+          if (t?.target?.table_name) tables.push(t.target.table_name);
+        });
+      }
+
+      // Format 3 (legacy): config.sources[].tables
       if (config.sources) {
         config.sources.forEach(s => {
           if (Array.isArray(s.tables)) tables.push(...s.tables);
           else if (typeof s.tables === 'string') tables.push(s.tables);
         });
       }
+
+      // Format 4 (legacy): config.transformations[].output_table
       if (config.transformations) {
         config.transformations.forEach(t => {
           if (t.output_table) tables.push(t.output_table);
         });
       }
+
+      // Format 5 (legacy): config.destinations[].table / .tables
       if (config.destinations) {
         config.destinations.forEach(d => {
           if (d.table) tables.push(d.table);

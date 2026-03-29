@@ -17,8 +17,15 @@ import {
     Trash2,
     Filter,
     Search,
-    Terminal
+    Terminal,
+    Database,
+    ShieldCheck
 } from 'lucide-react';
+
+const TYPE_CONFIG = {
+    etl:    { label: 'ETL Pipeline', color: 'primary',  Icon: Database },
+    verify: { label: 'Verify',       color: 'info',     Icon: ShieldCheck },
+};
 import './Executions.css';
 
 const STATUS_CONFIG = {
@@ -35,6 +42,7 @@ const Executions = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [statusFilter, setStatusFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedId, setExpandedId] = useState(null);
     const [taskLogs, setTaskLogs] = useState({});
@@ -153,6 +161,7 @@ const Executions = () => {
     };
 
     const filtered = executions.filter(e => {
+        if (typeFilter && (e.execution_type || 'etl') !== typeFilter) return false;
         if (!searchTerm) return true;
         const s = searchTerm.toLowerCase();
         return (
@@ -195,6 +204,18 @@ const Executions = () => {
                             <option value="running">Running</option>
                             <option value="success">Completed</option>
                             <option value="failed">Failed</option>
+                        </select>
+                    </div>
+                    <div className="filter-group">
+                        <Database size={18} />
+                        <select
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="">All Types</option>
+                            <option value="etl">ETL Pipeline</option>
+                            <option value="verify">Verify</option>
                         </select>
                     </div>
                     <div className="search-group">
@@ -252,6 +273,16 @@ const Executions = () => {
                                                     {exec.config_name || exec.airflow_dag_id || `Execution #${exec.id}`}
                                                 </span>
                                                 <Badge variant={cfg.color}>{cfg.label}</Badge>
+                                                {(() => {
+                                                    const type = TYPE_CONFIG[exec.execution_type] || TYPE_CONFIG.etl;
+                                                    const TypeIcon = type.Icon;
+                                                    return (
+                                                        <Badge variant={type.color}>
+                                                            <TypeIcon size={11} style={{ marginRight: 3, verticalAlign: 'middle' }} />
+                                                            {type.label}
+                                                        </Badge>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="execution-meta">
                                                 <span>ID: {exec.id}</span>

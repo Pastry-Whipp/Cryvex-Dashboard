@@ -14,21 +14,15 @@ import {
     Shield,
     Clock,
     Calendar,
-    FileCode,
     CheckCircle,
     XCircle,
     AlertCircle,
     RefreshCw,
     Loader2,
     Info,
-    Hash,
-    Database,
-    ChevronDown,
-    ChevronUp,
-    History
 } from 'lucide-react';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
-import { verificationService, merkleProofService } from '../services/verification.service';
+import { verificationService } from '../services/verification.service';
 import { pipelineExecutionService } from '../services/pipelineExecution.service';
 import './VerifyIntegrity.css';
 
@@ -48,21 +42,9 @@ const VerifyIntegrity = () => {
     const [selectedVerification, setSelectedVerification] = useState(null);
     const [showResultsModal, setShowResultsModal] = useState(false);
 
-    // Merkle Proof state
-    const [activeTab, setActiveTab] = useState('pipelines'); // 'pipelines' | 'merkle-proof'
-    const [proofTableName, setProofTableName] = useState('');
-    const [proofResult, setProofResult] = useState(null);
-    const [proofLoading, setProofLoading] = useState(false);
-    const [proofError, setProofError] = useState(null);
-    const [rootHistory, setRootHistory] = useState(null);
-    const [historyLoading, setHistoryLoading] = useState(false);
-    const [showHistory, setShowHistory] = useState(false);
-    const [verifiedTables, setVerifiedTables] = useState([]);
-
     useEffect(() => {
         loadConfigs();
         checkAirflowHealth();
-        loadVerifiedTables();
 
         // Cleanup pollers on unmount
         return () => {
@@ -81,52 +63,6 @@ const VerifyIntegrity = () => {
             setError('Failed to load pipeline configurations');
         } finally {
             setLoading(false);
-        }
-    };
-
-    const loadVerifiedTables = async () => {
-        try {
-            const data = await merkleProofService.getVerifiedTables();
-            setVerifiedTables(data.tables || []);
-        } catch (err) {
-            // silently fail - tables just won't be suggested
-        }
-    };
-
-    const handleProofVerify = async () => {
-        setProofError(null);
-        setProofResult(null);
-
-        if (!proofTableName.trim()) {
-            setProofError('Please enter a table name');
-            return;
-        }
-
-        setProofLoading(true);
-        try {
-            const result = await merkleProofService.verifyTable(proofTableName.trim());
-            setProofResult(result);
-        } catch (err) {
-            setProofError(err.response?.data?.detail || 'No Merkle record found for this table. Run the pipeline first.');
-        } finally {
-            setProofLoading(false);
-        }
-    };
-
-    const handleLoadHistory = async () => {
-        if (!proofTableName.trim()) {
-            setProofError('Enter a table name first');
-            return;
-        }
-        setHistoryLoading(true);
-        setShowHistory(true);
-        try {
-            const data = await merkleProofService.getRootHistory(proofTableName.trim());
-            setRootHistory(data);
-        } catch (err) {
-            setProofError('Could not load root history for this table.');
-        } finally {
-            setHistoryLoading(false);
         }
     };
 
@@ -498,161 +434,7 @@ const VerifyIntegrity = () => {
                     </Alert>
                 )}
 
-                {/* Tabs */}
-                <div className="integrity-tabs">
-                    <button
-                        className={`integrity-tab ${activeTab === 'pipelines' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('pipelines')}
-                    >
-                        <Shield size={16} /> Pipeline Verification
-                    </button>
-                    <button
-                        className={`integrity-tab ${activeTab === 'merkle-proof' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('merkle-proof')}
-                    >
-                        <Hash size={16} /> Merkle Proof Verifier
-                    </button>
-                </div>
-
-                {/* Merkle Proof Tab */}
-                {activeTab === 'merkle-proof' && (
-                    <div className="merkle-proof-section">
-                        <Card>
-                            <Card.Header>
-                                <Card.Title>
-                                    <Hash size={18} /> Verify a Data Row
-                                </Card.Title>
-                            </Card.Header>
-                            <Card.Body>
-                                <p className="proof-description">
-                                    Enter a table name to verify its data integrity.
-                                    The Merkle root stored in the database is compared against the root on blockchain —
-                                    any tampering with the data will cause a mismatch.
-                                </p>
-
-                                <div className="proof-form">
-                                    <div className="proof-field">
-                                        <label>Table Name</label>
-                                        <div className="proof-select-wrapper">
-                                            <Database size={16} className="proof-select-icon" />
-                                            <select
-                                                className="proof-select"
-                                                onChange={e => { setProofTableName(e.target.value); setProofResult(null); setRootHistory(null); setShowHistory(false); }}
-                                                value={proofTableName}
-                                            >
-                                                <option value="">— Select a table —</option>
-                                                {verifiedTables.map(t => (
-                                                    <option key={t.table_name} value={t.table_name}>
-                                                        {t.table_name} ({t.run_count} run{t.run_count !== 1 ? 's' : ''})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        {verifiedTables.length === 0 && (
-                                            <span className="proof-hint">No tables found. Run a pipeline first.</span>
-                                        )}
-                                    </div>
-
-
-                                    {proofError && (
-                                        <Alert variant="error">{proofError}</Alert>
-                                    )}
-
-                                    <div className="proof-actions">
-                                        <Button
-                                            variant="primary"
-                                            onClick={handleProofVerify}
-                                            disabled={proofLoading}
-                                        >
-                                            {proofLoading ? <Loader2 size={16} className="spin" /> : <Shield size={16} />}
-                                            {proofLoading ? 'Verifying...' : 'Verify Table'}
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            onClick={handleLoadHistory}
-                                            disabled={historyLoading}
-                                        >
-                                            <History size={16} />
-                                            {showHistory ? 'Refresh History' : 'View Root History'}
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/* Proof Result */}
-                                {proofResult && (
-                                    <div className={`proof-result ${proofResult.verified ? 'verified' : 'failed'}`}>
-                                        <div className="proof-result-header">
-                                            {proofResult.verified
-                                                ? <CheckCircle size={24} className="result-icon verified" />
-                                                : <XCircle size={24} className="result-icon failed" />
-                                            }
-                                            <div>
-                                                <h3>{proofResult.verified ? '✅ Table Integrity Verified' : '❌ Integrity Check Failed'}</h3>
-                                                <p>{proofResult.message}</p>
-                                            </div>
-                                        </div>
-                                        <div className="proof-result-details">
-                                            <div className="proof-detail">
-                                                <span className="detail-label">Merkle Root (DB)</span>
-                                                <code className="detail-value hash-value">{proofResult.merkle_root}</code>
-                                            </div>
-                                            {proofResult.blockchain_root && (
-                                                <div className="proof-detail">
-                                                    <span className="detail-label">Blockchain Root</span>
-                                                    <code className="detail-value hash-value">{proofResult.blockchain_root}</code>
-                                                </div>
-                                            )}
-                                            <div className="proof-detail">
-                                                <span className="detail-label">Roots Match</span>
-                                                <Badge variant={proofResult.roots_match ? 'success' : 'danger'}>
-                                                    {proofResult.roots_match ? 'Yes' : 'No'}
-                                                </Badge>
-                                            </div>
-                                            <div className="proof-detail">
-                                                <span className="detail-label">Rows in Dataset</span>
-                                                <span className="detail-value">{proofResult.row_count?.toLocaleString()}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Root History */}
-                                {showHistory && (
-                                    <div className="root-history">
-                                        <h3 className="history-title">
-                                            <History size={16} /> Root History for '{proofTableName}'
-                                        </h3>
-                                        {historyLoading ? (
-                                            <div className="loading-state"><Spinner size="sm" /> Loading history...</div>
-                                        ) : rootHistory ? (
-                                            rootHistory.total_runs === 0 ? (
-                                                <p className="no-history">No runs found for this table.</p>
-                                            ) : (
-                                                <div className="history-list">
-                                                    {rootHistory.history.map(run => (
-                                                        <div key={run.run} className="history-item">
-                                                            <div className="history-run">Run #{run.run}</div>
-                                                            <div className="history-details">
-                                                                <span>{run.row_count?.toLocaleString()} rows</span>
-                                                                <span>{run.timestamp ? new Date(run.timestamp).toLocaleString() : '-'}</span>
-                                                            </div>
-                                                            <code className="history-root">{run.merkle_root?.slice(0, 32)}...</code>
-                                                            {run.tx_hash && (
-                                                                <code className="history-tx">TX: {run.tx_hash?.slice(0, 20)}...</code>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )
-                                        ) : null}
-                                    </div>
-                                )}
-                            </Card.Body>
-                        </Card>
-                    </div>
-                )}
-
-                {activeTab === 'pipelines' && (
+                {/* Pipeline Verification */}
                 <div>
                 <div className="verify-integrity-filters">
                     <div className="search-wrapper">
@@ -764,7 +546,6 @@ const VerifyIntegrity = () => {
                 )}
 
                 </div>
-                )}
 
                 {/* Verification Results Modal */}
                 {showResultsModal && selectedVerification && (
