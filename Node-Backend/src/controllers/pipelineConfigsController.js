@@ -1,7 +1,7 @@
 const PipelineConfig = require('../models/PipelineConfig');
 const { ACTION_TYPE, ENTITY_TYPE } = require('../models/AuditLog');
 const { auditService } = require('../services/auditService');
-const { saveConfigFile, updateConfigFile, deleteConfigFile } = require('../utils/fileManager');
+const { saveConfigFile, saveSchemaFiles, updateConfigFile, deleteConfigFile } = require('../utils/fileManager');
 
 function serializeConfig(c) {
   return {
@@ -34,8 +34,9 @@ async function createPipelineConfig(req, res) {
 
   try {
     saveConfigFile(config.id, config.name, config.yaml_config);
+    saveSchemaFiles(config.id, config.json_schemas);
   } catch (e) {
-    console.error('Error saving config file:', e.message);
+    console.error('Error saving config/schema files:', e.message);
   }
 
   await auditService.logAction({
@@ -90,6 +91,14 @@ async function updatePipelineConfig(req, res) {
       updateConfigFile(config.id, config.name, config.yaml_config);
     } catch (e) {
       console.error('Error updating config file:', e.message);
+    }
+  }
+
+  if (updatedFields.includes('json_schemas')) {
+    try {
+      saveSchemaFiles(config.id, config.json_schemas);
+    } catch (e) {
+      console.error('Error updating schema files:', e.message);
     }
   }
 
