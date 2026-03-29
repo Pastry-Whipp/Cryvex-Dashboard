@@ -243,10 +243,14 @@ async function getMyExecutions(req, res) {
   const executions = await PipelineExecution.findAll({
     where,
     order: [['created_at', 'DESC']],
-    limit
+    limit,
+    include: [{ model: PipelineConfig, as: 'pipeline_config', attributes: ['name'] }]
   });
 
-  return res.json(executions.map(serializeExecution));
+  return res.json(executions.map(e => ({
+    ...serializeExecution(e),
+    config_name: e.pipeline_config?.name || null
+  })));
 }
 
 async function deleteExecution(req, res) {

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, User, LogOut } from 'lucide-react';
+import { User, LogOut } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import NotificationDropdown from './NotificationDropdown';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -15,9 +16,7 @@ const Navbar = () => {
         </Link>
 
         <div className="navbar-right">
-          <button className="navbar-icon-button">
-            <Bell size={20} />
-          </button>
+          <NotificationDropdown />
 
           <Link to="/profile" className="navbar-user">
             <div className="navbar-user-info">

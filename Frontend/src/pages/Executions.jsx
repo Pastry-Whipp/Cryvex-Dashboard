@@ -1,112 +1,167 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '../components/layout/DashboardLayout';
-import { auditLogService } from '../services/auditLog.service';
+import Card from '../components/common/Card';
+import Badge from '../components/common/Badge';
+import Button from '../components/common/Button';
+import { pipelineExecutionService } from '../services/pipelineExecution.service';
 import {
+    Activity,
+    Clock,
+    CheckCircle2,
+    XCircle,
+    Loader2,
+    RefreshCw,
+    ChevronDown,
+    ChevronUp,
     FileText,
+    Trash2,
     Filter,
     Search,
-    ChevronLeft,
-    ChevronRight,
-    PlusCircle,
-    Edit,
-    Trash2,
-    PlayCircle,
-    Activity,
-    Calendar,
-    User
+    Terminal
 } from 'lucide-react';
 import './Executions.css';
 
+const STATUS_CONFIG = {
+    pending:   { color: 'neutral',  icon: Clock,        label: 'Pending' },
+    queued:    { color: 'info',     icon: Clock,        label: 'Queued' },
+    running:   { color: 'warning',  icon: Loader2,      label: 'Running' },
+    success:   { color: 'success',  icon: CheckCircle2, label: 'Completed' },
+    failed:    { color: 'error',    icon: XCircle,      label: 'Failed' },
+    cancelled: { color: 'neutral',  icon: XCircle,      label: 'Cancelled' },
+};
+
 const Executions = () => {
-    const navigate = useNavigate();
-    const [logs, setLogs] = useState([]);
+    const [executions, setExecutions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [totalLogs, setTotalLogs] = useState(0);
+    const [statusFilter, setStatusFilter] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [expandedId, setExpandedId] = useState(null);
+    const [taskLogs, setTaskLogs] = useState({});
+    const [loadingLogs, setLoadingLogs] = useState({});
+    const pollStoppers = useRef({});
 
-    // Filters
-    const [filters, setFilters] = useState({
-        actionType: '',
-        entityType: '',
-        searchTerm: '',
-        limit: 50,
-        offset: 0
-    });
-
-    // Fetch logs
-    const fetchLogs = async () => {
+    const fetchExecutions = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
-
-            const params = {
-                actionType: filters.actionType || undefined,
-                entityType: filters.entityType || undefined,
-                limit: filters.limit,
-                offset: filters.offset
-            };
-
-            const response = await auditLogService.getAuditLogs(params);
-            setLogs(response.logs);
-            setTotalLogs(response.total);
+            const data = await pipelineExecutionService.getMyExecutions({
+                limit: 50,
+                statusFilter: statusFilter || undefined
+            });
+            setExecutions(data);
         } catch (err) {
-            console.error('Error fetching audit logs:', err);
-            setError('Failed to load audit logs. Please try again.');
+            console.error('Error fetching executions:', err);
+            setError('Failed to load executions.');
         } finally {
             setLoading(false);
         }
-    };
+    }, [statusFilter]);
 
     useEffect(() => {
-        fetchLogs();
-    }, [filters.actionType, filters.entityType, filters.limit, filters.offset]);
+        fetchExecutions();
+    }, [fetchExecutions]);
 
-    // Filter logs by search term (client-side)
-    const filteredLogs = logs.filter(log => {
-        if (!filters.searchTerm) return true;
-        const searchLower = filters.searchTerm.toLowerCase();
-        return (
-            log.entity_name?.toLowerCase().includes(searchLower) ||
-            log.username?.toLowerCase().includes(searchLower) ||
-            log.action_type?.toLowerCase().includes(searchLower)
+    // Poll active executions
+    useEffect(() => {
+        const activeExecs = executions.filter(e =>
+            ['pending', 'queued', 'running'].includes(e.status)
         );
-    });
 
-    // Pagination
-    const totalPages = Math.ceil(totalLogs / filters.limit);
-    const currentPage = Math.floor(filters.offset / filters.limit) + 1;
+        // Stop polling for executions that are no longer active
+        Object.keys(pollStoppers.current).forEach(id => {
+            if (!activeExecs.find(e => e.id === parseInt(id))) {
+                pollStoppers.current[id]();
+                delete pollStoppers.current[id];
+            }
+        });
 
-    const handlePageChange = (newPage) => {
-        setFilters(prev => ({
-            ...prev,
-            offset: (newPage - 1) * filters.limit
-        }));
-    };
+        // Start polling for new active executions
+        activeExecs.forEach(exec => {
+            if (pollStoppers.current[exec.id]) return;
 
-    // Get action icon
-    const getActionIcon = (actionType) => {
-        switch (actionType) {
-            case 'create': return <PlusCircle size={18} />;
-            case 'update': return <Edit size={18} />;
-            case 'delete': return <Trash2 size={18} />;
-            case 'execute': return <PlayCircle size={18} />;
-            case 'status_change': return <Activity size={18} />;
-            default: return <FileText size={18} />;
+            pollStoppers.current[exec.id] = pipelineExecutionService.pollStatus(
+                exec.id,
+                (data, err) => {
+                    if (data) {
+                        setExecutions(prev =>
+                            prev.map(e => e.id === exec.id ? { ...e, ...data } : e)
+                        );
+                        // Stop polling when terminal
+                        if (['success', 'failed', 'cancelled'].includes(data.status)) {
+                            delete pollStoppers.current[exec.id];
+                        }
+                    }
+                },
+                4000
+            );
+        });
+
+        return () => {
+            Object.values(pollStoppers.current).forEach(stop => stop());
+            pollStoppers.current = {};
+        };
+    }, [executions.map(e => `${e.id}:${e.status}`).join(',')]);
+
+    const handleDelete = async (execId) => {
+        if (!window.confirm('Delete this execution record?')) return;
+        try {
+            await pipelineExecutionService.deleteExecution(execId);
+            setExecutions(prev => prev.filter(e => e.id !== execId));
+        } catch (err) {
+            console.error('Delete failed:', err);
         }
     };
 
-    // Format date
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return new Intl.DateTimeFormat('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        }).format(date);
+    const handleViewLogs = async (execId, taskId) => {
+        const key = `${execId}_${taskId}`;
+        if (taskLogs[key]) {
+            setTaskLogs(prev => { const n = { ...prev }; delete n[key]; return n; });
+            return;
+        }
+        setLoadingLogs(prev => ({ ...prev, [key]: true }));
+        try {
+            const data = await pipelineExecutionService.getTaskLogs(execId, taskId);
+            setTaskLogs(prev => ({ ...prev, [key]: data.logs || 'No logs available' }));
+        } catch {
+            setTaskLogs(prev => ({ ...prev, [key]: 'Failed to fetch logs.' }));
+        } finally {
+            setLoadingLogs(prev => ({ ...prev, [key]: false }));
+        }
     };
+
+    const toggleExpand = (id) => {
+        setExpandedId(prev => prev === id ? null : id);
+    };
+
+    const formatDate = (d) => {
+        if (!d) return '-';
+        return new Intl.DateTimeFormat('en-US', {
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        }).format(new Date(d));
+    };
+
+    const getDuration = (start, end) => {
+        if (!start) return '-';
+        const s = new Date(start);
+        const e = end ? new Date(end) : new Date();
+        const diff = Math.floor((e - s) / 1000);
+        if (diff < 60) return `${diff}s`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;
+        return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`;
+    };
+
+    const filtered = executions.filter(e => {
+        if (!searchTerm) return true;
+        const s = searchTerm.toLowerCase();
+        return (
+            e.airflow_dag_id?.toLowerCase().includes(s) ||
+            e.airflow_run_id?.toLowerCase().includes(s) ||
+            e.config_name?.toLowerCase().includes(s) ||
+            String(e.id).includes(s)
+        );
+    });
 
     return (
         <DashboardLayout>
@@ -115,10 +170,14 @@ const Executions = () => {
                     <div className="header-title">
                         <Activity size={32} className="header-icon" />
                         <div>
-                            <h1>Execution Logs</h1>
-                            <p>Track all pipeline interactions and activities</p>
+                            <h1>Pipeline Executions</h1>
+                            <p>Monitor running pipelines and view execution history</p>
                         </div>
                     </div>
+                    <Button variant="outline" size="sm" onClick={fetchExecutions} disabled={loading}>
+                        <RefreshCw size={16} className={loading ? 'spin' : ''} />
+                        Refresh
+                    </Button>
                 </div>
 
                 {/* Filters */}
@@ -126,153 +185,193 @@ const Executions = () => {
                     <div className="filter-group">
                         <Filter size={18} />
                         <select
-                            value={filters.actionType}
-                            onChange={(e) => setFilters(prev => ({ ...prev, actionType: e.target.value, offset: 0 }))}
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
                             className="filter-select"
                         >
-                            <option value="">All Actions</option>
-                            <option value="create">Created</option>
-                            <option value="update">Updated</option>
-                            <option value="delete">Deleted</option>
-                            <option value="execute">Executed</option>
-                            <option value="status_change">Status Changed</option>
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="queued">Queued</option>
+                            <option value="running">Running</option>
+                            <option value="success">Completed</option>
+                            <option value="failed">Failed</option>
                         </select>
                     </div>
-
-                    <div className="filter-group">
-                        <Filter size={18} />
-                        <select
-                            value={filters.entityType}
-                            onChange={(e) => setFilters(prev => ({ ...prev, entityType: e.target.value, offset: 0 }))}
-                            className="filter-select"
-                        >
-                            <option value="">All Types</option>
-                            <option value="pipeline_config">Pipeline Config</option>
-                            <option value="pipeline_execution">Pipeline Execution</option>
-                        </select>
-                    </div>
-
                     <div className="search-group">
                         <Search size={18} />
                         <input
                             type="text"
-                            placeholder="Search by name or user..."
-                            value={filters.searchTerm}
-                            onChange={(e) => setFilters(prev => ({ ...prev, searchTerm: e.target.value }))}
+                            placeholder="Search by name, DAG ID, or run ID..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
                             className="search-input"
                         />
                     </div>
                 </div>
 
-                {/* Logs Table */}
-                <div className="executions-content">
-                    {loading ? (
+                {/* Executions List */}
+                <div className="executions-list">
+                    {loading && executions.length === 0 ? (
                         <div className="loading-state">
                             <div className="spinner"></div>
-                            <p>Loading audit logs...</p>
+                            <p>Loading executions...</p>
                         </div>
                     ) : error ? (
                         <div className="error-state">
                             <p>{error}</p>
-                            <button onClick={fetchLogs} className="retry-button">Retry</button>
+                            <button onClick={fetchExecutions} className="retry-button">Retry</button>
                         </div>
-                    ) : filteredLogs.length === 0 ? (
+                    ) : filtered.length === 0 ? (
                         <div className="empty-state">
-                            <FileText size={48} />
-                            <h3>No logs found</h3>
-                            <p>No audit logs match your current filters.</p>
+                            <Activity size={48} />
+                            <h3>No executions found</h3>
+                            <p>Run a pipeline from the Pipelines page to see executions here.</p>
                         </div>
                     ) : (
-                        <>
-                            <div className="logs-table-container">
-                                <table className="logs-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Action</th>
-                                            <th>Entity</th>
-                                            <th>Name</th>
-                                            <th>User</th>
-                                            <th>Date & Time</th>
-                                            <th>Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredLogs.map((log) => (
-                                            <tr key={log.id} className="log-row">
-                                                <td>
-                                                    <div className="action-cell" style={{ color: auditLogService.getActionColor(log.action_type) }}>
-                                                        {getActionIcon(log.action_type)}
-                                                        <span>{auditLogService.getActionLabel(log.action_type)}</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span className="entity-badge">
-                                                        {auditLogService.getEntityLabel(log.entity_type)}
-                                                    </span>
-                                                </td>
-                                                <td className="entity-name">{log.entity_name || `ID: ${log.entity_id}`}</td>
-                                                <td>
-                                                    <div className="user-cell">
-                                                        <User size={16} />
-                                                        <span>{log.username || 'System'}</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div className="date-cell">
-                                                        <Calendar size={16} />
-                                                        <span>{formatDate(log.created_at)}</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    {log.details && (
-                                                        <button
-                                                            className="details-button"
-                                                            onClick={() => {
-                                                                try {
-                                                                    const details = JSON.parse(log.details);
-                                                                    alert(JSON.stringify(details, null, 2));
-                                                                } catch (e) {
-                                                                    alert(log.details);
-                                                                }
-                                                            }}
-                                                        >
-                                                            View
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                        filtered.map(exec => {
+                            const cfg = STATUS_CONFIG[exec.status] || STATUS_CONFIG.pending;
+                            const StatusIcon = cfg.icon;
+                            const isExpanded = expandedId === exec.id;
+                            const isActive = ['pending', 'queued', 'running'].includes(exec.status);
+                            let progress = null;
+                            try { progress = exec.task_progress ? JSON.parse(exec.task_progress) : null; } catch {}
 
-                            {/* Pagination */}
-                            {totalPages > 1 && (
-                                <div className="pagination">
-                                    <button
-                                        onClick={() => handlePageChange(currentPage - 1)}
-                                        disabled={currentPage === 1}
-                                        className="pagination-button"
-                                    >
-                                        <ChevronLeft size={18} />
-                                        Previous
-                                    </button>
+                            return (
+                                <Card key={exec.id} className={`execution-card ${isActive ? 'execution-active' : ''}`}>
+                                    <div className="execution-row" onClick={() => toggleExpand(exec.id)}>
+                                        <div className="execution-status-icon">
+                                            <StatusIcon
+                                                size={22}
+                                                className={exec.status === 'running' ? 'spin' : ''}
+                                            />
+                                        </div>
 
-                                    <div className="pagination-info">
-                                        Page {currentPage} of {totalPages} ({totalLogs} total logs)
+                                        <div className="execution-main">
+                                            <div className="execution-title">
+                                                <span className="execution-name">
+                                                    {exec.config_name || exec.airflow_dag_id || `Execution #${exec.id}`}
+                                                </span>
+                                                <Badge variant={cfg.color}>{cfg.label}</Badge>
+                                            </div>
+                                            <div className="execution-meta">
+                                                <span>ID: {exec.id}</span>
+                                                <span className="meta-sep">|</span>
+                                                <span>{formatDate(exec.created_at)}</span>
+                                                <span className="meta-sep">|</span>
+                                                <span>Duration: {getDuration(exec.started_at, exec.completed_at)}</span>
+                                                {progress && progress.total > 0 && (
+                                                    <>
+                                                        <span className="meta-sep">|</span>
+                                                        <span>Tasks: {progress.completed}/{progress.total}</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="execution-actions">
+                                            {!isActive && (
+                                                <button
+                                                    className="action-icon-btn danger"
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(exec.id); }}
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                        </div>
                                     </div>
 
-                                    <button
-                                        onClick={() => handlePageChange(currentPage + 1)}
-                                        disabled={currentPage === totalPages}
-                                        className="pagination-button"
-                                    >
-                                        Next
-                                        <ChevronRight size={18} />
-                                    </button>
-                                </div>
-                            )}
-                        </>
+                                    {/* Progress bar for active */}
+                                    {isActive && progress && progress.total > 0 && (
+                                        <div className="execution-progress-bar">
+                                            <div
+                                                className="progress-fill"
+                                                style={{ width: `${(progress.completed / progress.total) * 100}%` }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Expanded Details */}
+                                    {isExpanded && (
+                                        <div className="execution-details">
+                                            <div className="detail-grid">
+                                                <div className="detail-item">
+                                                    <span className="detail-label">DAG ID</span>
+                                                    <span className="detail-value">{exec.airflow_dag_id || '-'}</span>
+                                                </div>
+                                                <div className="detail-item">
+                                                    <span className="detail-label">Run ID</span>
+                                                    <span className="detail-value mono">{exec.airflow_run_id || '-'}</span>
+                                                </div>
+                                                <div className="detail-item">
+                                                    <span className="detail-label">Started</span>
+                                                    <span className="detail-value">{formatDate(exec.started_at)}</span>
+                                                </div>
+                                                <div className="detail-item">
+                                                    <span className="detail-label">Completed</span>
+                                                    <span className="detail-value">{formatDate(exec.completed_at)}</span>
+                                                </div>
+                                            </div>
+
+                                            {exec.error_message && (
+                                                <div className="execution-error">
+                                                    <XCircle size={16} />
+                                                    <span>{exec.error_message}</span>
+                                                </div>
+                                            )}
+
+                                            {/* Task instances */}
+                                            {exec.tasks && exec.tasks.length > 0 && (
+                                                <div className="tasks-section">
+                                                    <h4>Tasks</h4>
+                                                    <div className="tasks-list">
+                                                        {exec.tasks.map(task => {
+                                                            const taskCfg = STATUS_CONFIG[task.state] || STATUS_CONFIG.pending;
+                                                            const TaskIcon = taskCfg.icon;
+                                                            const logKey = `${exec.id}_${task.task_id}`;
+                                                            return (
+                                                                <div key={task.task_id} className="task-item">
+                                                                    <div className="task-row">
+                                                                        <TaskIcon size={16} className={task.state === 'running' ? 'spin' : ''} />
+                                                                        <span className="task-name">{task.task_id}</span>
+                                                                        <Badge variant={taskCfg.color} size="sm">{task.state}</Badge>
+                                                                        {task.duration != null && (
+                                                                            <span className="task-duration">{Math.round(task.duration)}s</span>
+                                                                        )}
+                                                                        <button
+                                                                            className="log-btn"
+                                                                            onClick={(e) => { e.stopPropagation(); handleViewLogs(exec.id, task.task_id); }}
+                                                                        >
+                                                                            <Terminal size={14} />
+                                                                            {taskLogs[logKey] ? 'Hide Logs' : 'Logs'}
+                                                                        </button>
+                                                                    </div>
+                                                                    {loadingLogs[logKey] && (
+                                                                        <div className="task-logs-loading">Loading logs...</div>
+                                                                    )}
+                                                                    {taskLogs[logKey] && (
+                                                                        <pre className="task-logs">{taskLogs[logKey]}</pre>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* If no tasks yet but execution has logs field */}
+                                            {exec.logs && (
+                                                <div className="tasks-section">
+                                                    <h4>Logs</h4>
+                                                    <pre className="task-logs">{exec.logs}</pre>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </Card>
+                            );
+                        })
                     )}
                 </div>
             </div>

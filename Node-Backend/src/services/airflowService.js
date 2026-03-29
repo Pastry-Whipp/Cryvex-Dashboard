@@ -78,14 +78,28 @@ class AirflowService {
     return res.data;
   }
 
-  async triggerDag(dagId, conf = null, runId = null, logicalDate = null) {
-    const payload = {
-      logical_date: logicalDate || new Date().toISOString()
-    };
+  async unpauseDag(dagId) {
+    try {
+      await axios.patch(
+        `${this._baseUrl}/dags/${dagId}`,
+        { is_paused: false },
+        { headers: this._getHeaders(), timeout: 15000 }
+      );
+      console.log(`DAG ${dagId} unpaused`);
+    } catch (err) {
+      console.warn(`Could not unpause DAG ${dagId}: ${err.message}`);
+    }
+  }
+
+  async triggerDag(dagId, conf = null, runId = null) {
+    // Ensure the DAG is unpaused so the scheduler will pick up the run
+    await this.unpauseDag(dagId);
+
+    const payload = {};
     if (conf) payload.conf = conf;
     if (runId) payload.dag_run_id = runId;
 
-    console.log(`Triggering DAG: ${dagId}`);
+    console.log(`Triggering DAG: ${dagId}, run_id: ${runId}`);
     const res = await axios.post(
       `${this._baseUrl}/dags/${dagId}/dagRuns`,
       payload,

@@ -1,0 +1,237 @@
+.notif-wrapper {
+  position: relative;
+}
+
+.notif-bell {
+  position: relative;
+}
+
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--destructive);
+  color: white;
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Dropdown */
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 380px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+  overflow: hidden;
+  animation: notifSlideIn 0.15s ease-out;
+}
+
+@keyframes notifSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notif-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.notif-header h3 {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.notif-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.notif-close:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+/* Active banner */
+.notif-active-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: var(--accent);
+  color: var(--primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  border-bottom: 1px solid var(--border);
+}
+
+/* List */
+.notif-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-4);
+  color: var(--muted-foreground);
+}
+
+.notif-empty p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+/* Notification Item */
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  text-decoration: none;
+  transition: var(--transition);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.notif-item:last-child {
+  border-bottom: none;
+}
+
+.notif-item:hover {
+  background: var(--accent);
+}
+
+.notif-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notif-icon-success {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+}
+
+.notif-icon-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--destructive);
+}
+
+.notif-icon-warning {
+  background: rgba(234, 179, 8, 0.1);
+  color: var(--warning);
+}
+
+.notif-icon-info {
+  background: var(--accent);
+  color: var(--primary);
+}
+
+.notif-icon-muted {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.notif-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notif-item-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notif-item-desc {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.notif-item-time {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Footer */
+.notif-footer {
+  display: block;
+  text-align: center;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--primary);
+  text-decoration: none;
+  border-top: 1px solid var(--border);
+  transition: var(--transition);
+}
+
+.notif-footer:hover {
+  background: var(--accent);
+}
+
+/* Spin animation */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .notif-dropdown {
+    width: calc(100vw - 32px);
+    right: -60px;
+  }
+}

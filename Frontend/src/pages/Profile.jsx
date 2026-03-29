@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import Alert from '../components/common/Alert';
 import Input from '../components/common/Input';
-import { 
-  User, 
-  Mail, 
+import {
+  User,
+  Mail,
   Calendar,
   Shield,
   Edit3,
@@ -15,9 +15,14 @@ import {
   X,
   Key,
   Settings,
-  FileCode
+  FileCode,
+  Activity,
+  GitBranch
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { pipelineConfigService } from '../services/pipelineConfig.service';
+import { pipelineExecutionService } from '../services/pipelineExecution.service';
+import api from '../services/api';
 import { Link } from 'react-router-dom';
 import './Profile.css';
 
@@ -31,6 +36,30 @@ const Profile = () => {
     email: user?.email || ''
   });
 
+  // Real stats
+  const [stats, setStats] = useState({ configs: 0, executions: 0, successful: 0, active: 0 });
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    try {
+      const [configs, executions] = await Promise.allSettled([
+        pipelineConfigService.getAll(),
+        pipelineExecutionService.getMyExecutions({ limit: 100 })
+      ]);
+      const cfgs = configs.status === 'fulfilled' ? configs.value : [];
+      const execs = executions.status === 'fulfilled' ? executions.value : [];
+      setStats({
+        configs: cfgs.length,
+        executions: execs.length,
+        successful: execs.filter(e => e.status === 'success').length,
+        active: execs.filter(e => ['running', 'queued', 'pending'].includes(e.status)).length
+      });
+    } catch {}
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -42,13 +71,13 @@ const Profile = () => {
 
   const handleSave = async () => {
     try {
-      // Here you would call the API to update user profile
-      // await userService.updateProfile(formData);
+      await api.put('/users/me', formData);
       setSuccess('Profile updated successfully');
       setIsEditing(false);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError('Failed to update profile');
+      setError(err.response?.data?.detail || 'Failed to update profile');
+      setTimeout(() => setError(null), 4000);
     }
   };
 
@@ -110,9 +139,9 @@ const Profile = () => {
                 </div>
               </div>
               {!isEditing && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setIsEditing(true)}
                   className="edit-btn"
                 >
@@ -214,15 +243,15 @@ const Profile = () => {
 
             <Card className="action-card">
               <div className="action-icon">
-                <Key size={24} />
+                <Activity size={24} />
               </div>
               <div className="action-content">
-                <h3>Security</h3>
-                <p>Update your password and security settings</p>
+                <h3>Executions</h3>
+                <p>Monitor your pipeline runs and view logs</p>
               </div>
-              <Link to="/settings">
+              <Link to="/executions">
                 <Button variant="outline" size="sm">
-                  Settings
+                  View Runs
                 </Button>
               </Link>
             </Card>
@@ -232,8 +261,8 @@ const Profile = () => {
                 <Settings size={24} />
               </div>
               <div className="action-content">
-                <h3>Preferences</h3>
-                <p>Customize your dashboard experience</p>
+                <h3>Settings</h3>
+                <p>Theme, connections, and account preferences</p>
               </div>
               <Link to="/settings">
                 <Button variant="outline" size="sm">
@@ -248,20 +277,20 @@ const Profile = () => {
             <h3 className="stats-title">Account Overview</h3>
             <div className="stats-grid">
               <div className="stat-item">
-                <span className="stat-number">-</span>
-                <span className="stat-label">Total Pipelines</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-number">-</span>
+                <span className="stat-number">{stats.configs}</span>
                 <span className="stat-label">Configurations</span>
               </div>
               <div className="stat-item">
-                <span className="stat-number">-</span>
-                <span className="stat-label">Executions</span>
+                <span className="stat-number">{stats.executions}</span>
+                <span className="stat-label">Total Executions</span>
               </div>
               <div className="stat-item">
-                <span className="stat-number">-</span>
-                <span className="stat-label">Integrity Checks</span>
+                <span className="stat-number">{stats.successful}</span>
+                <span className="stat-label">Successful Runs</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-number">{stats.active}</span>
+                <span className="stat-label">Active Now</span>
               </div>
             </div>
           </Card>

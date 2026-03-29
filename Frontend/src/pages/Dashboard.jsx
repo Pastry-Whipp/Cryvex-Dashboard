@@ -5,18 +5,30 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
-import { GitBranch, Activity, Shield, Plus, Upload, CheckCircle, Clock, FileCode, User, Calendar } from 'lucide-react';
+import {
+  GitBranch, Activity, Shield, Plus, Upload, CheckCircle, Clock,
+  FileCode, User, Calendar, Loader2, XCircle, CheckCircle2, Database
+} from 'lucide-react';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
-import { auditLogService } from '../services/auditLog.service';
+import { pipelineExecutionService } from '../services/pipelineExecution.service';
 import { useAuth } from '../hooks/useAuth';
 import './Dashboard.css';
+
+const EXEC_STATUS = {
+  pending:   { color: 'neutral',  icon: Clock,        label: 'Pending' },
+  queued:    { color: 'info',     icon: Clock,        label: 'Queued' },
+  running:   { color: 'warning',  icon: Loader2,      label: 'Running' },
+  success:   { color: 'success',  icon: CheckCircle2, label: 'Completed' },
+  failed:    { color: 'error',    icon: XCircle,      label: 'Failed' },
+  cancelled: { color: 'neutral',  icon: XCircle,      label: 'Cancelled' },
+};
 
 const Dashboard = () => {
   const { user } = useAuth();
   const [configs, setConfigs] = useState([]);
-  const [executions, setExecutions] = useState([]);
+  const [recentExecs, setRecentExecs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [executionsLoading, setExecutionsLoading] = useState(true);
+  const [execsLoading, setExecsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -40,13 +52,13 @@ const Dashboard = () => {
 
   const loadRecentExecutions = async () => {
     try {
-      setExecutionsLoading(true);
-      const response = await auditLogService.getAuditLogs({ limit: 5, offset: 0 });
-      setExecutions(response.logs);
+      setExecsLoading(true);
+      const data = await pipelineExecutionService.getMyExecutions({ limit: 50 });
+      setRecentExecs(data);
     } catch (err) {
       console.error('Error loading executions:', err);
     } finally {
-      setExecutionsLoading(false);
+      setExecsLoading(false);
     }
   };
 
@@ -59,9 +71,9 @@ const Dashboard = () => {
     const diffDays = Math.floor(diffMs / 86400000);
 
     if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
 
     return date.toLocaleDateString('en-US', {
       month: 'short',
@@ -70,42 +82,42 @@ const Dashboard = () => {
     });
   };
 
+  // Compute real stats
+  const activeCount = recentExecs.filter(e => ['running', 'queued', 'pending'].includes(e.status)).length;
+  const thisMonth = new Date();
+  const monthStart = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1);
+  const execsThisMonth = recentExecs.filter(e => new Date(e.created_at) >= monthStart).length;
+  const successCount = recentExecs.filter(e => e.status === 'success').length;
+
   const stats = [
     {
       label: 'Pipeline Configs',
       value: loading ? '...' : configs.length.toString(),
       icon: FileCode,
-      color: 'primary',
-      available: true
+      color: 'primary'
     },
     {
       label: 'Active Pipelines',
-      value: '--',
+      value: execsLoading ? '...' : activeCount.toString(),
       icon: Activity,
-      color: 'success',
-      available: false,
-      comingSoon: true
+      color: 'success'
     },
     {
       label: 'Executions This Month',
-      value: '--',
-      icon: Activity,
-      color: 'info',
-      available: false,
-      comingSoon: true
+      value: execsLoading ? '...' : execsThisMonth.toString(),
+      icon: GitBranch,
+      color: 'info'
     },
     {
-      label: 'Verified Records',
-      value: '--',
-      icon: Shield,
-      color: 'warning',
-      available: false,
-      comingSoon: true
+      label: 'Successful Runs',
+      value: execsLoading ? '...' : successCount.toString(),
+      icon: CheckCircle,
+      color: 'warning'
     },
   ];
 
-  // Get recent configs for display
   const recentConfigs = configs.slice(0, 4);
+  const recentExecsDisplay = recentExecs.slice(0, 5);
 
   return (
     <DashboardLayout>
@@ -122,13 +134,13 @@ const Dashboard = () => {
         {/* Stats Grid */}
         <div className="dashboard-stats">
           {stats.map((stat, index) => (
-            <Card key={index} className={`stat-card ${stat.comingSoon ? 'stat-card-coming-soon' : ''}`}>
+            <Card key={index} className="stat-card">
               <div className="stat-card-content">
                 <div
                   className="stat-icon"
                   style={{
-                    backgroundColor: stat.comingSoon ? 'var(--muted)' : `var(--${stat.color}-light)`,
-                    color: stat.comingSoon ? 'var(--muted-foreground)' : `var(--${stat.color})`
+                    backgroundColor: `var(--accent)`,
+                    color: `var(--primary)`
                   }}
                 >
                   <stat.icon size={24} />
@@ -136,12 +148,7 @@ const Dashboard = () => {
                 <div className="stat-info">
                   <p className="stat-label">{stat.label}</p>
                   <div className="stat-value-wrapper">
-                    <h3 className={`stat-value ${stat.comingSoon ? 'stat-value-muted' : ''}`}>
-                      {stat.value}
-                    </h3>
-                    {stat.comingSoon && (
-                      <Badge variant="neutral" className="coming-soon-badge">Coming Soon</Badge>
-                    )}
+                    <h3 className="stat-value">{stat.value}</h3>
                   </div>
                 </div>
               </div>
@@ -159,16 +166,22 @@ const Dashboard = () => {
                 Create Pipeline Config
               </Button>
             </Link>
-            <Link to="/my-configs">
+            <Link to="/pipelines">
               <Button variant="secondary">
-                <Upload size={20} />
-                Manage Configs
+                <Activity size={20} />
+                Run Pipeline
               </Button>
             </Link>
             <Link to="/verify-integrity">
               <Button variant="outline">
                 <CheckCircle size={20} />
                 Verify Integrity
+              </Button>
+            </Link>
+            <Link to="/data-explorer">
+              <Button variant="outline">
+                <Database size={20} />
+                Data Explorer
               </Button>
             </Link>
           </div>
@@ -256,12 +269,12 @@ const Dashboard = () => {
           </div>
 
           <Card>
-            {executionsLoading ? (
+            {execsLoading ? (
               <div className="loading-container">
                 <Spinner size="md" />
                 <p>Loading recent executions...</p>
               </div>
-            ) : executions.length === 0 ? (
+            ) : recentExecsDisplay.length === 0 ? (
               <div className="empty-state-mini">
                 <Activity size={32} className="empty-icon" />
                 <p>No executions yet</p>
@@ -277,34 +290,34 @@ const Dashboard = () => {
                 <table className="execution-table">
                   <thead>
                     <tr>
-                      <th>Action</th>
-                      <th>Entity</th>
-                      <th>Name</th>
-                      <th>User</th>
-                      <th>Date</th>
+                      <th>Pipeline</th>
+                      <th>Status</th>
+                      <th>DAG</th>
+                      <th>Started</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {executions.map((log) => (
-                      <tr key={log.id}>
-                        <td>
-                          <div className="action-cell" style={{ color: auditLogService.getActionColor(log.action_type) }}>
-                            <span className="action-label">{auditLogService.getActionLabel(log.action_type)}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <Badge variant="info">{auditLogService.getEntityLabel(log.entity_type)}</Badge>
-                        </td>
-                        <td className="font-medium">{log.entity_name || `ID: ${log.entity_id}`}</td>
-                        <td>
-                          <div className="user-cell">
-                            <User size={14} />
-                            <span>{log.username || 'System'}</span>
-                          </div>
-                        </td>
-                        <td className="text-muted">{formatDate(log.created_at)}</td>
-                      </tr>
-                    ))}
+                    {recentExecsDisplay.map((exec) => {
+                      const cfg = EXEC_STATUS[exec.status] || EXEC_STATUS.pending;
+                      return (
+                        <tr key={exec.id}>
+                          <td className="font-medium">
+                            {exec.config_name || `Config #${exec.pipeline_config_id}`}
+                          </td>
+                          <td>
+                            <Badge variant={cfg.color}>{cfg.label}</Badge>
+                          </td>
+                          <td className="text-muted">{exec.airflow_dag_id || '-'}</td>
+                          <td className="text-muted">{formatDate(exec.started_at || exec.created_at)}</td>
+                          <td>
+                            <Link to="/executions">
+                              <Button variant="ghost" size="sm">Details</Button>
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

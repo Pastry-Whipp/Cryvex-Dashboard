@@ -33,10 +33,6 @@
   background-color: var(--white);
 }
 
-.stat-card-coming-soon {
-  opacity: 0.85;
-}
-
 .stat-card-content {
   display: flex;
   align-items: center;
@@ -75,14 +71,6 @@
   font-weight: var(--font-bold);
   color: var(--text-primary);
   margin: 0;
-}
-
-.stat-value-muted {
-  color: var(--muted-foreground);
-}
-
-.coming-soon-badge {
-  font-size: var(--text-xs);
 }
 
 .dashboard-actions {
