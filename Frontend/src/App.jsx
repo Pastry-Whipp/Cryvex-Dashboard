@@ -11,6 +11,7 @@ import Pipelines from './pages/Pipelines';
 import CreatePipeline from './pages/CreatePipeline';
 import Profile from './pages/Profile';
 import MyConfigs from './pages/MyConfigs';
+import ConfigEditor from './pages/ConfigEditor';
 import Executions from './pages/Executions';
 import VerifyIntegrity from './pages/VerifyIntegrity';
 import DataExplorer from './pages/DataExplorer';
@@ -53,6 +54,12 @@ function App() {
           <Route path="/my-configs" element={
             <ProtectedRoute>
               <MyConfigs />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/my-configs/:id" element={
+            <ProtectedRoute>
+              <ConfigEditor />
             </ProtectedRoute>
           } />
 

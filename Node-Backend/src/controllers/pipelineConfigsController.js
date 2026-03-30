@@ -13,6 +13,10 @@ function serializeConfig(c) {
     version: c.version,
     yaml_config: c.yaml_config,
     json_schemas: c.json_schemas,
+    schedule_enabled: c.schedule_enabled || false,
+    schedule_cron: c.schedule_cron || null,
+    schedule_type: c.schedule_type || null,
+    last_scheduled_at: c.last_scheduled_at || null,
     created_at: c.created_at,
     updated_at: c.updated_at
   };
@@ -74,7 +78,7 @@ async function updatePipelineConfig(req, res) {
   });
   if (!config) return res.status(404).json({ detail: 'Pipeline configuration not found' });
 
-  const allowedFields = ['name', 'description', 'domain', 'version', 'yaml_config', 'json_schemas'];
+  const allowedFields = ['name', 'description', 'domain', 'version', 'yaml_config', 'json_schemas', 'schedule_enabled', 'schedule_cron', 'schedule_type'];
   const updatedFields = [];
 
   for (const field of allowedFields) {

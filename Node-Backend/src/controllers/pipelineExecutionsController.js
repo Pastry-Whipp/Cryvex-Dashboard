@@ -184,12 +184,38 @@ async function getExecution(req, res) {
           try_number: t.try_number || 1
         }));
 
+        const failedCount = tasks.filter(t => t.state === 'failed').length;
+
         execution.task_progress = JSON.stringify({
           total: tasks.length,
           completed: tasks.filter(t => t.state === 'success').length,
-          failed: tasks.filter(t => t.state === 'failed').length,
+          failed: failedCount,
           running: tasks.filter(t => t.state === 'running').length
         });
+
+        // Auto-fetch error logs from failed tasks
+        if (failedCount > 0 && [EXECUTION_STATUS.FAILED].includes(newStatus)) {
+          const errorParts = [];
+          for (const t of tasks.filter(t => t.state === 'failed')) {
+            try {
+              const logs = await airflowService.getTaskLogs(
+                execution.airflow_dag_id, execution.airflow_run_id,
+                t.task_id, t.try_number || 1
+              );
+              // Extract last 30 lines for the error summary
+              const logLines = (logs || '').split('\n');
+              const tail = logLines.slice(-30).join('\n').trim();
+              if (tail) {
+                errorParts.push(`--- Task: ${t.task_id} ---\n${tail}`);
+              }
+            } catch {
+              errorParts.push(`--- Task: ${t.task_id} ---\nFailed to fetch logs`);
+            }
+          }
+          if (errorParts.length > 0) {
+            execution.error_message = errorParts.join('\n\n');
+          }
+        }
 
         await execution.save();
       } catch (err) {

@@ -20,9 +20,17 @@ import {
     RefreshCw,
     Loader2,
     Info,
+    Database,
+    Hash,
+    Link as LinkIcon,
+    History,
+    ShieldCheck,
+    ShieldX,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
-import { verificationService } from '../services/verification.service';
+import { verificationService, merkleProofService } from '../services/verification.service';
 import { pipelineExecutionService } from '../services/pipelineExecution.service';
 import './VerifyIntegrity.css';
 
@@ -42,9 +50,18 @@ const VerifyIntegrity = () => {
     const [selectedVerification, setSelectedVerification] = useState(null);
     const [showResultsModal, setShowResultsModal] = useState(false);
 
+    // Merkle proof section
+    const [verifiedTables, setVerifiedTables] = useState([]);
+    const [loadingTables, setLoadingTables] = useState(false);
+    const [tableResults, setTableResults] = useState({});
+    const [verifyingTable, setVerifyingTable] = useState(null);
+    const [expandedTable, setExpandedTable] = useState(null);
+    const [tableHistory, setTableHistory] = useState({});
+
     useEffect(() => {
         loadConfigs();
         checkAirflowHealth();
+        loadVerifiedTables();
 
         // Cleanup pollers on unmount
         return () => {
@@ -172,6 +189,65 @@ const VerifyIntegrity = () => {
                 console.error('Error fetching verification results:', err);
             }
         }
+    };
+
+    const loadVerifiedTables = async () => {
+        setLoadingTables(true);
+        try {
+            const data = await merkleProofService.getVerifiedTables();
+            setVerifiedTables(data.tables || []);
+        } catch (err) {
+            console.error('Error loading verified tables:', err);
+        } finally {
+            setLoadingTables(false);
+        }
+    };
+
+    const handleVerifyTable = async (tableName) => {
+        setVerifyingTable(tableName);
+        try {
+            const result = await merkleProofService.verifyTable(tableName);
+            setTableResults(prev => ({ ...prev, [tableName]: result }));
+        } catch (err) {
+            setTableResults(prev => ({
+                ...prev,
+                [tableName]: {
+                    verified: false,
+                    message: err.response?.data?.detail || 'Verification failed',
+                    table_name: tableName
+                }
+            }));
+        } finally {
+            setVerifyingTable(null);
+        }
+    };
+
+    const handleToggleHistory = async (tableName) => {
+        if (expandedTable === tableName) {
+            setExpandedTable(null);
+            return;
+        }
+        setExpandedTable(tableName);
+        if (!tableHistory[tableName]) {
+            try {
+                const data = await merkleProofService.getRootHistory(tableName);
+                setTableHistory(prev => ({ ...prev, [tableName]: data }));
+            } catch (err) {
+                console.error('Error loading history:', err);
+            }
+        }
+    };
+
+    const handleVerifyAllTables = async () => {
+        for (const table of verifiedTables) {
+            await handleVerifyTable(table.table_name);
+        }
+    };
+
+    const truncateHash = (hash) => {
+        if (!hash) return '-';
+        if (hash.length <= 20) return hash;
+        return `${hash.slice(0, 10)}...${hash.slice(-10)}`;
     };
 
     const filteredConfigs = configs.filter(config =>
@@ -545,6 +621,180 @@ const VerifyIntegrity = () => {
                     </div>
                 )}
 
+                </div>
+
+                {/* Blockchain Verification Section */}
+                <div className="blockchain-section">
+                    <div className="blockchain-section-header">
+                        <div>
+                            <h2 className="section-title">
+                                <Shield size={24} />
+                                Blockchain Integrity Status
+                            </h2>
+                            <p className="section-subtitle">
+                                Verify table data against Merkle roots stored on the blockchain
+                            </p>
+                        </div>
+                        <div className="section-actions">
+                            <Button variant="outline" size="sm" onClick={loadVerifiedTables} disabled={loadingTables}>
+                                <RefreshCw size={16} className={loadingTables ? 'spin' : ''} />
+                                Refresh
+                            </Button>
+                            {verifiedTables.length > 0 && (
+                                <Button variant="primary" size="sm" onClick={handleVerifyAllTables} disabled={!!verifyingTable}>
+                                    <ShieldCheck size={16} />
+                                    Verify All Tables
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+
+                    {loadingTables ? (
+                        <Card>
+                            <div className="loading-state"><Loader2 size={24} className="spin" /> Loading tables...</div>
+                        </Card>
+                    ) : verifiedTables.length === 0 ? (
+                        <Card>
+                            <div className="empty-tables-state">
+                                <Database size={40} />
+                                <h3>No verified tables yet</h3>
+                                <p>Run an ETL pipeline first, then verify its data integrity here</p>
+                            </div>
+                        </Card>
+                    ) : (
+                        <div className="verified-tables-list">
+                            {verifiedTables.map((table) => {
+                                const result = tableResults[table.table_name];
+                                const isVerifying = verifyingTable === table.table_name;
+                                const isExpanded = expandedTable === table.table_name;
+                                const history = tableHistory[table.table_name];
+
+                                return (
+                                    <Card key={table.table_name} className="table-verify-card">
+                                        <div className="table-verify-row">
+                                            <div className="table-verify-info">
+                                                <div className="table-verify-icon">
+                                                    {result ? (
+                                                        result.verified
+                                                            ? <ShieldCheck size={24} className="icon-verified" />
+                                                            : <ShieldX size={24} className="icon-failed" />
+                                                    ) : (
+                                                        <Database size={24} className="icon-pending" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <h4 className="table-verify-name">{table.table_name}</h4>
+                                                    <div className="table-verify-meta">
+                                                        <span>{table.run_count} run{table.run_count !== 1 ? 's' : ''}</span>
+                                                        <span className="meta-sep">|</span>
+                                                        <span>{table.latest_row_count} rows</span>
+                                                        <span className="meta-sep">|</span>
+                                                        <span>Last: {table.last_run ? new Date(table.last_run).toLocaleString() : '-'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="table-verify-actions">
+                                                {result && (
+                                                    <Badge variant={result.verified ? 'success' : 'error'}>
+                                                        {result.verified ? 'Verified' : 'Failed'}
+                                                    </Badge>
+                                                )}
+                                                <Button
+                                                    variant={result?.verified ? 'outline' : 'primary'}
+                                                    size="sm"
+                                                    onClick={() => handleVerifyTable(table.table_name)}
+                                                    disabled={isVerifying}
+                                                >
+                                                    {isVerifying ? <Loader2 size={14} className="spin" /> : <Shield size={14} />}
+                                                    {isVerifying ? 'Verifying...' : 'Verify'}
+                                                </Button>
+                                                <button
+                                                    className="history-btn"
+                                                    onClick={() => handleToggleHistory(table.table_name)}
+                                                    title="View root history"
+                                                >
+                                                    {isExpanded ? <ChevronUp size={16} /> : <History size={16} />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Verification Result Details */}
+                                        {result && (
+                                            <div className={`table-verify-result ${result.verified ? 'success' : 'failed'}`}>
+                                                <p className="result-message">{result.message}</p>
+                                                <div className="result-details">
+                                                    <div className="result-detail">
+                                                        <span className="detail-label">
+                                                            <Hash size={12} /> DB Merkle Root
+                                                        </span>
+                                                        <code className="detail-hash" title={result.merkle_root}>
+                                                            {truncateHash(result.merkle_root)}
+                                                        </code>
+                                                    </div>
+                                                    <div className="result-detail">
+                                                        <span className="detail-label">
+                                                            <LinkIcon size={12} /> Blockchain Root
+                                                        </span>
+                                                        <code className="detail-hash" title={result.blockchain_root}>
+                                                            {truncateHash(result.blockchain_root)}
+                                                        </code>
+                                                    </div>
+                                                    <div className="result-detail">
+                                                        <span className="detail-label">Roots Match</span>
+                                                        <Badge variant={result.roots_match ? 'success' : 'error'} size="sm">
+                                                            {result.roots_match ? 'Yes' : 'No'}
+                                                        </Badge>
+                                                    </div>
+                                                    {result.tx_hash && (
+                                                        <div className="result-detail">
+                                                            <span className="detail-label">TX Hash</span>
+                                                            <code className="detail-hash" title={result.tx_hash}>
+                                                                {truncateHash(result.tx_hash)}
+                                                            </code>
+                                                        </div>
+                                                    )}
+                                                    {result.row_count && (
+                                                        <div className="result-detail">
+                                                            <span className="detail-label">Rows Protected</span>
+                                                            <span>{result.row_count}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Root History */}
+                                        {isExpanded && history && (
+                                            <div className="table-history">
+                                                <h5 className="history-title">
+                                                    <History size={14} /> Root History ({history.total_runs} runs)
+                                                </h5>
+                                                {history.history && history.history.length > 0 ? (
+                                                    <div className="history-list">
+                                                        {history.history.slice().reverse().map((entry, i) => (
+                                                            <div key={i} className="history-entry">
+                                                                <span className="history-run">#{entry.run}</span>
+                                                                <code className="history-hash" title={entry.merkle_root}>
+                                                                    {truncateHash(entry.merkle_root)}
+                                                                </code>
+                                                                <span className="history-rows">{entry.row_count} rows</span>
+                                                                <span className="history-date">
+                                                                    {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '-'}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="no-history">No history available</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 {/* Verification Results Modal */}

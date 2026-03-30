@@ -379,30 +379,41 @@
 /* Error Section */
 .error-section {
   margin-top: var(--space-6);
-  padding: var(--space-4);
   background: rgba(239, 68, 68, 0.05);
   border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
-.error-section h4 {
+.error-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+  color: var(--destructive);
+}
+
+.error-section-header h4 {
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
   color: var(--destructive);
-  margin: 0 0 var(--space-3) 0;
+  margin: 0;
 }
 
 .error-message {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--destructive);
+  color: #ef4444;
   background: transparent;
-  padding: 0;
+  padding: var(--space-4);
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
   overflow: auto;
-  max-height: 200px;
+  max-height: 400px;
+  line-height: 1.6;
 }
 
 /* Tasks Section */
@@ -485,4 +496,67 @@
   .execution-failed {
     flex-wrap: wrap;
   }
+}
+
+/* Schedule Badge */
+.schedule-badge-row {
+  margin-top: var(--space-2);
+}
+
+/* Schedule Modal */
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.schedule-config-name {
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.schedule-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.schedule-select {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.schedule-select:focus {
+  border-color: var(--primary);
+}
+
+.schedule-time-row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.schedule-field {
+  flex: 1;
+}
+
+.schedule-current-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: var(--space-3);
+  background-color: rgba(102, 126, 234, 0.08);
+  border-radius: var(--radius-md);
 }

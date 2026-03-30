@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -6,21 +7,24 @@ import Badge from '../components/common/Badge';
 import Alert from '../components/common/Alert';
 import Modal from '../components/common/Modal';
 import Input from '../components/common/Input';
-import { 
-  Download, 
-  Upload, 
-  Trash2, 
-  FileJson, 
-  FileCode, 
+import {
+  Download,
+  Upload,
+  Trash2,
+  FileJson,
+  FileCode,
   Calendar,
   X,
-  Check
+  Check,
+  Eye,
+  Edit3
 } from 'lucide-react';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
 import { downloadFile } from '../utils/configGenerator';
 import './MyConfigs.css';
 
 const MyConfigs = () => {
+  const navigate = useNavigate();
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -312,12 +316,20 @@ const MyConfigs = () => {
 
                 <div className="config-actions">
                   <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate(`/my-configs/${config.id}`)}
+                  >
+                    <Eye size={16} />
+                    View / Edit
+                  </Button>
+                  <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleDownloadYaml(config)}
                   >
                     <FileCode size={16} />
-                    Download YAML
+                    YAML
                   </Button>
                   <Button
                     variant="outline"
@@ -325,7 +337,7 @@ const MyConfigs = () => {
                     onClick={() => handleDownloadSchemas(config)}
                   >
                     <FileJson size={16} />
-                    Download Schemas
+                    Schemas
                   </Button>
                 </div>
               </Card>

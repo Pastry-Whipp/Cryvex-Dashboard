@@ -346,9 +346,12 @@ const Executions = () => {
                                             </div>
 
                                             {exec.error_message && (
-                                                <div className="execution-error">
-                                                    <XCircle size={16} />
-                                                    <span>{exec.error_message}</span>
+                                                <div className="execution-error-block">
+                                                    <div className="error-header">
+                                                        <XCircle size={16} />
+                                                        <strong>Error Details</strong>
+                                                    </div>
+                                                    <pre className="error-message-pre">{exec.error_message}</pre>
                                                 </div>
                                             )}
 

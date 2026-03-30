@@ -8,13 +8,13 @@ import EmptyState from '../components/common/EmptyState';
 import Spinner from '../components/common/Spinner';
 import Modal from '../components/common/Modal';
 import Alert from '../components/common/Alert';
-import { 
-  Plus, 
-  Search, 
-  GitBranch, 
-  Play, 
-  Clock, 
-  Calendar, 
+import {
+  Plus,
+  Search,
+  GitBranch,
+  Play,
+  Clock,
+  Calendar,
   FileCode,
   CheckCircle,
   XCircle,
@@ -22,7 +22,9 @@ import {
   RefreshCw,
   Loader2,
   Info,
-  StopCircle
+  StopCircle,
+  Timer,
+  CalendarClock
 } from 'lucide-react';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
 import { pipelineExecutionService } from '../services/pipelineExecution.service';
@@ -43,6 +45,17 @@ const Pipelines = () => {
   // Execution details modal
   const [selectedExecution, setSelectedExecution] = useState(null);
   const [showExecutionModal, setShowExecutionModal] = useState(false);
+
+  // Schedule state
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleConfig, setScheduleConfig] = useState(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    type: 'daily',
+    hour: '08',
+    minute: '00',
+    dayOfWeek: '1',
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   useEffect(() => {
     loadConfigs();
@@ -196,6 +209,106 @@ const Pipelines = () => {
       day: 'numeric',
       year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
     });
+  };
+
+  const openScheduleModal = (config) => {
+    setScheduleConfig(config);
+    if (config.schedule_enabled && config.schedule_type) {
+      const form = { type: config.schedule_type, hour: '08', minute: '00', dayOfWeek: '1' };
+      const cron = config.schedule_cron || '';
+      if (config.schedule_type === 'daily' && cron.includes(':')) {
+        const [h, m] = cron.split(':');
+        form.hour = h; form.minute = m;
+      } else if (config.schedule_type === 'weekly' && cron.includes(':')) {
+        const parts = cron.split(':');
+        form.dayOfWeek = parts[0]; form.hour = parts[1]; form.minute = parts[2];
+      }
+      setScheduleForm(form);
+    } else {
+      setScheduleForm({ type: 'daily', hour: '08', minute: '00', dayOfWeek: '1' });
+    }
+    setShowScheduleModal(true);
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!scheduleConfig) return;
+    setSavingSchedule(true);
+    try {
+      let cronExpr;
+      switch (scheduleForm.type) {
+        case 'interval_30m': cronExpr = 'interval_30m'; break;
+        case 'interval_1h': cronExpr = 'interval_1h'; break;
+        case 'interval_6h': cronExpr = 'interval_6h'; break;
+        case 'interval_12h': cronExpr = 'interval_12h'; break;
+        case 'daily':
+          cronExpr = `${scheduleForm.hour}:${scheduleForm.minute}`;
+          break;
+        case 'weekly':
+          cronExpr = `${scheduleForm.dayOfWeek}:${scheduleForm.hour}:${scheduleForm.minute}`;
+          break;
+        default: cronExpr = null;
+      }
+
+      await pipelineConfigService.update(scheduleConfig.id, {
+        schedule_enabled: true,
+        schedule_type: scheduleForm.type,
+        schedule_cron: cronExpr
+      });
+
+      setConfigs(prev => prev.map(c =>
+        c.id === scheduleConfig.id
+          ? { ...c, schedule_enabled: true, schedule_type: scheduleForm.type, schedule_cron: cronExpr }
+          : c
+      ));
+      setShowScheduleModal(false);
+    } catch (err) {
+      console.error('Error saving schedule:', err);
+      setError('Failed to save schedule');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const handleDisableSchedule = async () => {
+    if (!scheduleConfig) return;
+    setSavingSchedule(true);
+    try {
+      await pipelineConfigService.update(scheduleConfig.id, {
+        schedule_enabled: false,
+        schedule_type: null,
+        schedule_cron: null
+      });
+      setConfigs(prev => prev.map(c =>
+        c.id === scheduleConfig.id
+          ? { ...c, schedule_enabled: false, schedule_type: null, schedule_cron: null }
+          : c
+      ));
+      setShowScheduleModal(false);
+    } catch (err) {
+      console.error('Error disabling schedule:', err);
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const getScheduleLabel = (config) => {
+    if (!config.schedule_enabled) return null;
+    const type = config.schedule_type;
+    const cron = config.schedule_cron || '';
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    switch (type) {
+      case 'interval_30m': return 'Every 30 min';
+      case 'interval_1h': return 'Every 1 hour';
+      case 'interval_6h': return 'Every 6 hours';
+      case 'interval_12h': return 'Every 12 hours';
+      case 'daily': return `Daily at ${cron}`;
+      case 'weekly': {
+        const parts = cron.split(':');
+        return `${dayNames[parseInt(parts[0])] || '?'} at ${parts[1]}:${parts[2]}`;
+      }
+      default: return 'Scheduled';
+    }
   };
 
   const getDomainBadge = (domain) => {
@@ -526,13 +639,26 @@ const Pipelines = () => {
                     </div>
                   </div>
                   
+                  {/* Schedule Badge */}
+                  {config.schedule_enabled && (
+                    <div className="schedule-badge-row">
+                      <Badge variant="info">
+                        <CalendarClock size={12} style={{ marginRight: 4 }} />
+                        {getScheduleLabel(config)}
+                      </Badge>
+                    </div>
+                  )}
+
                   {/* Execution Stats */}
                   {renderExecutionStats(config)}
                 </Card.Body>
                 <Card.Footer>
-                  <Link to="/my-configs">
-                    <Button variant="ghost" size="sm">View Details</Button>
+                  <Link to={`/my-configs/${config.id}`}>
+                    <Button variant="ghost" size="sm">View Config</Button>
                   </Link>
+                  <Button variant="outline" size="sm" onClick={() => openScheduleModal(config)} title="Schedule">
+                    <Timer size={16} />
+                  </Button>
                   {renderExecuteButton(config)}
                 </Card.Footer>
               </Card>
@@ -579,7 +705,10 @@ const Pipelines = () => {
 
                 {selectedExecution.error_message && (
                   <div className="error-section">
-                    <h4>Error Message</h4>
+                    <div className="error-section-header">
+                      <XCircle size={16} />
+                      <h4>Airflow Error Details</h4>
+                    </div>
                     <pre className="error-message">{selectedExecution.error_message}</pre>
                   </div>
                 )}
@@ -607,6 +736,106 @@ const Pipelines = () => {
             <Modal.Footer>
               <Button variant="ghost" onClick={() => setShowExecutionModal(false)}>
                 Close
+              </Button>
+            </Modal.Footer>
+          </Modal>
+        )}
+        {/* Schedule Modal */}
+        {showScheduleModal && scheduleConfig && (
+          <Modal isOpen={showScheduleModal} onClose={() => setShowScheduleModal(false)} size="md">
+            <Modal.Header>
+              <Modal.Title>Schedule Pipeline</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <div className="schedule-form">
+                <p className="schedule-config-name">{scheduleConfig.name}</p>
+
+                <div className="schedule-type-select">
+                  <label className="schedule-label">Schedule Type</label>
+                  <select
+                    value={scheduleForm.type}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, type: e.target.value })}
+                    className="schedule-select"
+                  >
+                    <optgroup label="Interval">
+                      <option value="interval_30m">Every 30 minutes</option>
+                      <option value="interval_1h">Every 1 hour</option>
+                      <option value="interval_6h">Every 6 hours</option>
+                      <option value="interval_12h">Every 12 hours</option>
+                    </optgroup>
+                    <optgroup label="Scheduled">
+                      <option value="daily">Daily at specific time</option>
+                      <option value="weekly">Weekly on specific day</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                {(scheduleForm.type === 'daily' || scheduleForm.type === 'weekly') && (
+                  <div className="schedule-time-row">
+                    {scheduleForm.type === 'weekly' && (
+                      <div className="schedule-field">
+                        <label className="schedule-label">Day</label>
+                        <select
+                          value={scheduleForm.dayOfWeek}
+                          onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: e.target.value })}
+                          className="schedule-select"
+                        >
+                          <option value="1">Monday</option>
+                          <option value="2">Tuesday</option>
+                          <option value="3">Wednesday</option>
+                          <option value="4">Thursday</option>
+                          <option value="5">Friday</option>
+                          <option value="6">Saturday</option>
+                          <option value="0">Sunday</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="schedule-field">
+                      <label className="schedule-label">Hour</label>
+                      <select
+                        value={scheduleForm.hour}
+                        onChange={(e) => setScheduleForm({ ...scheduleForm, hour: e.target.value })}
+                        className="schedule-select"
+                      >
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <option key={i} value={String(i).padStart(2, '0')}>
+                            {String(i).padStart(2, '0')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="schedule-field">
+                      <label className="schedule-label">Minute</label>
+                      <select
+                        value={scheduleForm.minute}
+                        onChange={(e) => setScheduleForm({ ...scheduleForm, minute: e.target.value })}
+                        className="schedule-select"
+                      >
+                        {['00', '15', '30', '45'].map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {scheduleConfig.schedule_enabled && (
+                  <div className="schedule-current-info">
+                    <CalendarClock size={14} />
+                    <span>Currently: <strong>{getScheduleLabel(scheduleConfig)}</strong></span>
+                  </div>
+                )}
+              </div>
+            </Modal.Body>
+            <Modal.Footer>
+              {scheduleConfig.schedule_enabled && (
+                <Button variant="danger" size="sm" onClick={handleDisableSchedule} disabled={savingSchedule}>
+                  Disable Schedule
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setShowScheduleModal(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleSaveSchedule} disabled={savingSchedule}>
+                {savingSchedule ? 'Saving...' : 'Enable Schedule'}
               </Button>
             </Modal.Footer>
           </Modal>

@@ -1,0 +1,270 @@
+.config-editor-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.config-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+  gap: var(--space-4);
+}
+
+.header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.back-btn {
+  background: none;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: var(--space-2);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.back-btn:hover {
+  background-color: var(--muted);
+  color: var(--text-primary);
+}
+
+.config-meta-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.meta-text {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.config-description-text {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+  line-height: 1.5;
+}
+
+/* Editor Card */
+.editor-card {
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-tabs {
+  display: flex;
+  gap: 0;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.editor-tab:hover {
+  color: var(--text-secondary);
+}
+
+.editor-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.line-count {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background-color: var(--muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toolbar-btn {
+  background: none;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+.toolbar-btn:hover {
+  background-color: var(--muted);
+  color: var(--text-primary);
+}
+
+.view-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background-color: var(--muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.edit-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--primary);
+  background-color: rgba(102, 126, 234, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+/* Code Editor */
+.editor-container {
+  background-color: #1a1d23;
+  min-height: 500px;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.code-editor-wrapper {
+  display: flex;
+  min-height: 500px;
+}
+
+.line-numbers {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) 0;
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  background-color: #151820;
+  color: #5c6370;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: right;
+  user-select: none;
+  min-width: 48px;
+  border-right: 1px solid #2a2e38;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.code-editor {
+  flex: 1;
+  background: transparent;
+  color: #abb2bf;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: var(--space-4);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  min-height: 500px;
+  width: 100%;
+  tab-size: 2;
+  white-space: pre;
+  overflow: visible;
+}
+
+.code-editor:read-only {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.code-editor:not(:read-only) {
+  background-color: #1e2129;
+}
+
+.code-editor:focus {
+  outline: none;
+}
+
+.code-editor::selection {
+  background-color: rgba(102, 126, 234, 0.3);
+}
+
+/* Discard Modal */
+.discard-modal-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.warning-icon {
+  color: var(--warning);
+}
+
+.discard-modal-content p {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .config-editor-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .editor-toolbar {
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: flex-start;
+  }
+
+  .editor-container {
+    max-height: 50vh;
+  }
+}
