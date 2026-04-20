@@ -115,6 +115,9 @@
 }
 
 .pipeline-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: var(--space-6);
   cursor: pointer;
   transition: var(--transition);
@@ -122,6 +125,7 @@
 
 .pipeline-card:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .pipeline-card-header {
@@ -240,6 +244,9 @@
 }
 
 .table-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: var(--space-6);
   cursor: pointer;
   transition: var(--transition);
@@ -247,6 +254,7 @@
 
 .table-card:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .table-card-disabled {
@@ -649,6 +657,41 @@
 
 .query-table tbody tr:hover {
   background-color: var(--accent);
+}
+
+/* View Mode Toggle */
+.view-mode-toggle {
+  display: flex;
+  background-color: var(--muted);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.view-toggle-btn:hover {
+  color: var(--foreground);
+}
+
+.view-toggle-btn.active {
+  background-color: var(--background);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* Loading & Empty States */

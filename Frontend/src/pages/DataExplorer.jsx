@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -6,7 +7,7 @@ import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import Modal from '../components/common/Modal';
 import Alert from '../components/common/Alert';
-import { 
+import {
   Database,
   Table,
   Search,
@@ -21,12 +22,17 @@ import {
   SortAsc,
   SortDesc,
   X,
-  Layers
+  Layers,
+  BarChart3,
+  TableProperties
 } from 'lucide-react';
 import { dataExplorerService } from '../services/dataExplorer.service';
+import TableVisualization from '../components/data/TableVisualization';
 import './DataExplorer.css';
 
 const DataExplorer = () => {
+  const [searchParams] = useSearchParams();
+
   // Pipeline state
   const [pipelines, setPipelines] = useState([]);
   const [selectedPipeline, setSelectedPipeline] = useState(null);
@@ -60,6 +66,11 @@ const DataExplorer = () => {
   const [executingQuery, setExecutingQuery] = useState(false);
   const [queryError, setQueryError] = useState(null);
   
+  // Visualization state
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'visualize'
+  const [tableStats, setTableStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+
   // UI state
   const [error, setError] = useState(null);
   const [dbHealthy, setDbHealthy] = useState(null);
@@ -69,6 +80,15 @@ const DataExplorer = () => {
     loadPipelines();
     checkDatabaseHealth();
   }, []);
+
+  // Auto-select pipeline from URL param (e.g. ?pipeline_id=3)
+  useEffect(() => {
+    const pipelineIdParam = searchParams.get('pipeline_id');
+    if (pipelineIdParam && pipelines.length > 0 && !selectedPipeline) {
+      const match = pipelines.find(p => String(p.id) === pipelineIdParam);
+      if (match) handlePipelineSelect(match);
+    }
+  }, [pipelines, searchParams]);
 
   useEffect(() => {
     if (selectedPipeline) {
@@ -111,12 +131,14 @@ const DataExplorer = () => {
 
     try {
       setLoadingTables(true);
+      setError(null);
       const data = await dataExplorerService.getPipelineTables(selectedPipeline.id);
       setTables(data);
-      setError(null);
     } catch (err) {
       console.error('Error loading tables:', err);
-      setError('Failed to load tables');
+      const detail = err.response?.data?.detail;
+      setError(detail || 'Failed to load tables. Check that your target database is connected.');
+      setTables([]);
     } finally {
       setLoadingTables(false);
     }
@@ -157,6 +179,29 @@ const DataExplorer = () => {
     }
   };
 
+  const loadTableStats = async () => {
+    if (!selectedTable || !selectedPipeline) return;
+    try {
+      setLoadingStats(true);
+      const stats = await dataExplorerService.getTableStats(
+        selectedPipeline.id,
+        selectedTable
+      );
+      setTableStats(stats);
+    } catch (err) {
+      console.error('Error loading table stats:', err);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+    if (mode === 'visualize' && !tableStats) {
+      loadTableStats();
+    }
+  };
+
   const handlePipelineSelect = (pipeline) => {
     setSelectedPipeline(pipeline);
     setSelectedTable(null);
@@ -173,6 +218,8 @@ const DataExplorer = () => {
     setSearchTerm('');
     setSortColumn(null);
     setSortOrder('ASC');
+    setViewMode('table');
+    setTableStats(null);
   };
 
   const handleBackToTables = () => {
@@ -181,6 +228,8 @@ const DataExplorer = () => {
     setTableColumns([]);
     setCurrentPage(1);
     setSearchTerm('');
+    setViewMode('table');
+    setTableStats(null);
   };
 
   const handleBackToPipelines = () => {
@@ -307,25 +356,23 @@ const DataExplorer = () => {
       ) : (
         <div className="pipelines-grid">
           {pipelines.map((pipeline) => (
-            <Card key={pipeline.id} hover onClick={() => handlePipelineSelect(pipeline)}>
-              <div className="pipeline-card">
-                <div className="pipeline-card-header">
-                  <Layers size={24} className="pipeline-icon" />
-                  <h3>{pipeline.name}</h3>
-                </div>
-                {pipeline.description && (
-                  <p className="pipeline-description">{pipeline.description}</p>
-                )}
-                <div className="pipeline-stats">
-                  {pipeline.domain && (
-                    <Badge variant="primary">{pipeline.domain}</Badge>
-                  )}
-                  <Badge variant="neutral">
-                    {pipeline.table_count} {pipeline.table_count === 1 ? 'table' : 'tables'}
-                  </Badge>
-                </div>
+            <div key={pipeline.id} className="pipeline-card" onClick={() => handlePipelineSelect(pipeline)}>
+              <div className="pipeline-card-header">
+                <Layers size={24} className="pipeline-icon" />
+                <h3>{pipeline.name}</h3>
               </div>
-            </Card>
+              {pipeline.description && (
+                <p className="pipeline-description">{pipeline.description}</p>
+              )}
+              <div className="pipeline-stats">
+                {pipeline.domain && (
+                  <Badge variant="primary">{pipeline.domain}</Badge>
+                )}
+                <Badge variant="neutral">
+                  {pipeline.table_count} {pipeline.table_count === 1 ? 'table' : 'tables'}
+                </Badge>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -389,6 +436,18 @@ const DataExplorer = () => {
             <p>Loading tables...</p>
           </div>
         </Card>
+      ) : error ? (
+        <Card>
+          <div className="empty-state">
+            <AlertCircle size={48} />
+            <h3>Failed to Load Tables</h3>
+            <p>{error}</p>
+            <Button variant="outline" size="sm" onClick={loadPipelineTables}>
+              <RefreshCw size={16} />
+              Retry
+            </Button>
+          </div>
+        </Card>
       ) : filteredTables.length === 0 ? (
         <Card>
           <div className="empty-state">
@@ -397,45 +456,42 @@ const DataExplorer = () => {
             <p>
               {tableSearchTerm
                 ? 'No tables match your search'
-                : 'No tables configured for this pipeline'}
+                : 'No tables are configured for this pipeline yet'}
             </p>
           </div>
         </Card>
       ) : (
         <div className="tables-grid">
           {filteredTables.map((table) => (
-            <Card 
-              key={table.table_name} 
-              hover 
+            <div
+              key={table.table_name}
+              className={`table-card ${!table.exists ? 'table-card-disabled' : ''}`}
               onClick={() => table.exists && handleTableSelect(table.table_name)}
-              className={!table.exists ? 'table-card-disabled' : ''}
             >
-              <div className="table-card">
-                <div className="table-card-header">
-                  <Table size={24} className="table-icon" />
-                  <h3>{table.table_name}</h3>
-                  {!table.exists && (
-                    <Badge variant="warning">Not Created</Badge>
-                  )}
+              <div className="table-card-header">
+                <Table size={24} className="table-icon" />
+                <h3 className="table-name">{table.table_name}</h3>
+                {!table.exists && (
+                  <Badge variant="warning">Not Created</Badge>
+                )}
+              </div>
+              <div className="table-stats">
+                <div className="stat">
+                  <span className="stat-label">Rows</span>
+                  <span className="stat-value">
+                    {dataExplorerService.formatNumber(table.row_count)}
+                  </span>
                 </div>
-                <div className="table-stats">
-                  <div className="stat">
-                    <span className="stat-label">Rows</span>
-                    <span className="stat-value">
-                      {dataExplorerService.formatNumber(table.row_count)}
-                    </span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-label">Columns</span>
-                    <span className="stat-value">{table.column_count}</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-label">Size</span>
-                    <span className="stat-value">{table.size}</span>
-                  </div>
+                <div className="stat">
+                  <span className="stat-label">Columns</span>
+                  <span className="stat-value">{table.column_count}</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-label">Size</span>
+                  <span className="stat-value">{table.size}</span>
                 </div>
               </div>
-            </Card>
+            </div>
           ))}
         </div>
       )}
@@ -465,11 +521,27 @@ const DataExplorer = () => {
           </div>
         </div>
         <div className="header-actions">
+          <div className="view-mode-toggle">
+            <button
+              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => handleViewModeChange('table')}
+            >
+              <TableProperties size={16} />
+              Table
+            </button>
+            <button
+              className={`view-toggle-btn ${viewMode === 'visualize' ? 'active' : ''}`}
+              onClick={() => handleViewModeChange('visualize')}
+            >
+              <BarChart3 size={16} />
+              Visualize
+            </button>
+          </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={loadTableData}
-            disabled={loadingData}
+            onClick={viewMode === 'table' ? loadTableData : loadTableStats}
+            disabled={loadingData || loadingStats}
           >
             <RefreshCw size={16} />
             Refresh
@@ -486,6 +558,10 @@ const DataExplorer = () => {
         </div>
       </div>
 
+      {viewMode === 'visualize' ? (
+        <TableVisualization stats={tableStats} loading={loadingStats} />
+      ) : (
+      <>
       <Card>
         <div className="data-filters">
           <div className="search-wrapper-large">
@@ -628,6 +704,8 @@ const DataExplorer = () => {
             </div>
           </div>
         </>
+      )}
+      </>
       )}
     </div>
   );

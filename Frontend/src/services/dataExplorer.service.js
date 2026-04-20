@@ -84,6 +84,20 @@ export const dataExplorerService = {
   },
 
   /**
+   * Get column-level statistics for a table
+   * @param {number} pipelineId - Pipeline ID
+   * @param {string} tableName - Table name
+   * @param {string} schema - Database schema
+   */
+  getTableStats: async (pipelineId, tableName, schema = 'public') => {
+    const response = await api.get(
+      `/pipeline-data/tables/${tableName}/stats`,
+      { params: { pipeline_id: pipelineId, schema } }
+    );
+    return response.data;
+  },
+
+  /**
    * Execute a custom SQL query
    * @param {string} query - SQL SELECT query
    * @param {number} pipelineId - Pipeline ID for table restrictions

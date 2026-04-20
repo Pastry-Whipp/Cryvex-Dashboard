@@ -16,6 +16,8 @@ import Executions from './pages/Executions';
 import VerifyIntegrity from './pages/VerifyIntegrity';
 import DataExplorer from './pages/DataExplorer';
 import SettingsPage from './pages/Settings';
+import AuditLogs from './pages/AuditLogs';
+import Users from './pages/Users';
 
 function App() {
   return (
@@ -84,6 +86,18 @@ function App() {
           <Route path="/settings" element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/audit-logs" element={
+            <ProtectedRoute>
+              <AuditLogs />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/admin/users" element={
+            <ProtectedRoute>
+              <Users />
             </ProtectedRoute>
           } />
 

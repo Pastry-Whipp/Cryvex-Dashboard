@@ -20,6 +20,14 @@ class VerificationService {
     }
 
     /**
+     * Force stop a running/queued verification
+     */
+    async forceStop(executionId) {
+        const response = await api.post(`/verification/${executionId}/stop`);
+        return response.data;
+    }
+
+    /**
      * Poll for verification status updates
      */
     pollVerificationStatus(executionId, callback, interval = 3000) {
@@ -111,23 +119,21 @@ class VerificationService {
             failed_tables: 0
         };
 
-        // Parse task results
+        // Parse task results — show all tasks (DAG may use 'run_verification' or 'verify_*' naming)
         execution.tasks.forEach(task => {
-            if (task.task_id.startsWith('verify_')) {
-                const tableName = task.task_id.replace('verify_', '');
-                results.tables.push({
-                    table_name: tableName,
-                    status: task.state,
-                    verified: task.state === 'success',
-                    duration: task.duration
-                });
+            const tableName = task.task_id.replace(/^(verify_|run_)/, '');
+            results.tables.push({
+                table_name: tableName,
+                status: task.state,
+                verified: task.state === 'success',
+                duration: task.duration
+            });
 
-                results.total_tables++;
-                if (task.state === 'success') {
-                    results.verified_tables++;
-                } else if (task.state === 'failed') {
-                    results.failed_tables++;
-                }
+            results.total_tables++;
+            if (task.state === 'success') {
+                results.verified_tables++;
+            } else if (task.state === 'failed') {
+                results.failed_tables++;
             }
         });
 

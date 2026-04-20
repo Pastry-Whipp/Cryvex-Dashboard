@@ -4,6 +4,57 @@ const { ACTION_TYPE, ENTITY_TYPE } = require('../models/AuditLog');
 const { auditService } = require('../services/auditService');
 const { airflowService } = require('../services/airflowService');
 
+// ── Log helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Strip Airflow infrastructure noise from a raw task log and return the
+ * last `maxLines` meaningful lines.
+ */
+function cleanTaskLogs(rawLogs, maxLines = 100) {
+  const NOISE = [
+    /INFO\s*-\s*::(group|endgroup)::/,
+    /::(group|endgroup)::/,
+    /\*{3}\s*!+\s*Please make sure/,
+    /\*{3}\s*Could not read served logs/,
+    /See more at https?:\/\//,
+    /^\s*[0-9a-f]{12}\s*$/i,   // bare container hostname line
+  ];
+  const lines = (rawLogs || '').split('\n');
+  const filtered = lines.filter(line => !NOISE.some(re => re.test(line)) && line.trim() !== '');
+  return filtered.slice(-maxLines).join('\n').trim();
+}
+
+/**
+ * Detect whether an error_message is a stale/useless placeholder
+ * that should be replaced with a fresh log fetch.
+ */
+function isStaleLog(msg) {
+  if (!msg || msg.trim() === '') return true;
+  return msg.includes('Failed to fetch logs') ||
+         msg.includes('403 Client Error') ||
+         msg.includes('Could not read served logs') ||
+         msg.includes('secret_key') ||
+         msg.includes('FORBIDDEN');
+}
+
+/**
+ * Fetch and clean logs for every failed task in a list.
+ * Returns an array of "--- Task: X ---\n<cleaned log>" strings.
+ */
+async function fetchFailedTaskLogs(dagId, runId, failedTasks) {
+  const parts = [];
+  for (const t of failedTasks) {
+    try {
+      const raw = await airflowService.getTaskLogs(dagId, runId, t.task_id, t.try_number || 1);
+      const cleaned = cleanTaskLogs(raw, 100);
+      if (cleaned) parts.push(`--- Task: ${t.task_id} ---\n${cleaned}`);
+    } catch (err) {
+      parts.push(`--- Task: ${t.task_id} ---\nLog unavailable: ${err.message}`);
+    }
+  }
+  return parts;
+}
+
 function getExecutionType(airflow_dag_id) {
   if (!airflow_dag_id) return 'etl';
   if (airflow_dag_id.includes('verify')) return 'verify';
@@ -160,9 +211,19 @@ async function getExecution(req, res) {
   const config_name = config ? config.name : null;
   let tasks = null;
 
-  if (syncStatus && [EXECUTION_STATUS.QUEUED, EXECUTION_STATUS.RUNNING].includes(execution.status)) {
-    if (airflowService.isConfigured && execution.airflow_dag_id && execution.airflow_run_id) {
-      try {
+  const canSync = syncStatus &&
+    airflowService.isConfigured &&
+    execution.airflow_dag_id &&
+    execution.airflow_run_id;
+
+  const isActive = [EXECUTION_STATUS.QUEUED, EXECUTION_STATUS.RUNNING].includes(execution.status);
+  // Re-visit failed executions when they have no useful error message yet
+  const isFailedWithStaleLog = execution.status === EXECUTION_STATUS.FAILED && isStaleLog(execution.error_message);
+
+  if (canSync && (isActive || isFailedWithStaleLog)) {
+    try {
+      // ── 1. For active runs: sync the current Airflow state ──────────────
+      if (isActive) {
         const dagRun = await airflowService.getDagRun(execution.airflow_dag_id, execution.airflow_run_id);
         const newStatus = airflowService.mapAirflowStateToStatus(dagRun.state || '');
 
@@ -172,55 +233,68 @@ async function getExecution(req, res) {
             execution.completed_at = new Date();
           }
         }
-
-        const taskResult = await airflowService.getTaskInstances(execution.airflow_dag_id, execution.airflow_run_id);
-        const taskInstances = taskResult.task_instances || [];
-        tasks = taskInstances.map(t => ({
-          task_id: t.task_id,
-          state: t.state || 'unknown',
-          start_date: t.start_date,
-          end_date: t.end_date,
-          duration: t.duration,
-          try_number: t.try_number || 1
-        }));
-
-        const failedCount = tasks.filter(t => t.state === 'failed').length;
-
-        execution.task_progress = JSON.stringify({
-          total: tasks.length,
-          completed: tasks.filter(t => t.state === 'success').length,
-          failed: failedCount,
-          running: tasks.filter(t => t.state === 'running').length
-        });
-
-        // Auto-fetch error logs from failed tasks
-        if (failedCount > 0 && [EXECUTION_STATUS.FAILED].includes(newStatus)) {
-          const errorParts = [];
-          for (const t of tasks.filter(t => t.state === 'failed')) {
-            try {
-              const logs = await airflowService.getTaskLogs(
-                execution.airflow_dag_id, execution.airflow_run_id,
-                t.task_id, t.try_number || 1
-              );
-              // Extract last 30 lines for the error summary
-              const logLines = (logs || '').split('\n');
-              const tail = logLines.slice(-30).join('\n').trim();
-              if (tail) {
-                errorParts.push(`--- Task: ${t.task_id} ---\n${tail}`);
-              }
-            } catch {
-              errorParts.push(`--- Task: ${t.task_id} ---\nFailed to fetch logs`);
-            }
-          }
-          if (errorParts.length > 0) {
-            execution.error_message = errorParts.join('\n\n');
-          }
-        }
-
-        await execution.save();
-      } catch (err) {
-        console.warn('Failed to sync from Airflow:', err.message);
       }
+
+      // ── 2. Fetch task instances (active AND failed-with-stale-log) ──────
+      const taskResult = await airflowService.getTaskInstances(
+        execution.airflow_dag_id, execution.airflow_run_id
+      );
+      const taskInstances = taskResult.task_instances || [];
+      tasks = taskInstances.map(t => ({
+        task_id:    t.task_id,
+        state:      t.state || 'unknown',
+        start_date: t.start_date,
+        end_date:   t.end_date,
+        duration:   t.duration,
+        try_number: t.try_number || 1
+      }));
+
+      const failedTasks = tasks.filter(t => t.state === 'failed');
+
+      if (isActive) {
+        execution.task_progress = JSON.stringify({
+          total:     tasks.length,
+          completed: tasks.filter(t => t.state === 'success').length,
+          failed:    failedTasks.length,
+          running:   tasks.filter(t => t.state === 'running').length
+        });
+      }
+
+      // ── 3. Fetch & clean logs whenever there are failed tasks ────────────
+      //    Covers: active run just failed, AND already-failed with stale log
+      const nowFailed = execution.status === EXECUTION_STATUS.FAILED;
+      if (nowFailed && failedTasks.length > 0) {
+        const parts = await fetchFailedTaskLogs(
+          execution.airflow_dag_id, execution.airflow_run_id, failedTasks
+        );
+        if (parts.length > 0) {
+          execution.error_message = parts.join('\n\n');
+        }
+      }
+
+      await execution.save();
+    } catch (err) {
+      console.warn('Failed to sync from Airflow:', err.message);
+    }
+  }
+
+  // ── For already-failed executions with good logs: still return task list ──
+  // (so the "Tasks" section renders even on repeated requests)
+  if (canSync && execution.status === EXECUTION_STATUS.FAILED && tasks === null) {
+    try {
+      const taskResult = await airflowService.getTaskInstances(
+        execution.airflow_dag_id, execution.airflow_run_id
+      );
+      tasks = (taskResult.task_instances || []).map(t => ({
+        task_id:    t.task_id,
+        state:      t.state || 'unknown',
+        start_date: t.start_date,
+        end_date:   t.end_date,
+        duration:   t.duration,
+        try_number: t.try_number || 1
+      }));
+    } catch {
+      // non-fatal — tasks stays null
     }
   }
 
@@ -286,6 +360,59 @@ async function getMyExecutions(req, res) {
   })));
 }
 
+async function forceStopExecution(req, res) {
+  const executionId = parseInt(req.params.execution_id);
+
+  const execution = await PipelineExecution.findOne({
+    where: { id: executionId, user_id: req.user.id }
+  });
+  if (!execution) return res.status(404).json({ detail: 'Execution not found' });
+
+  // Only allow stopping active executions
+  const stoppableStatuses = [EXECUTION_STATUS.PENDING, EXECUTION_STATUS.QUEUED, EXECUTION_STATUS.RUNNING];
+  if (!stoppableStatuses.includes(execution.status)) {
+    return res.status(400).json({
+      detail: `Cannot stop execution with status '${execution.status}'. Only pending, queued, or running executions can be stopped.`
+    });
+  }
+
+  // Try to cancel the DAG run in Airflow
+  let airflowCancelled = false;
+  if (airflowService.isConfigured && execution.airflow_dag_id && execution.airflow_run_id) {
+    try {
+      await airflowService.cancelDagRun(execution.airflow_dag_id, execution.airflow_run_id);
+      airflowCancelled = true;
+      console.log(`✅ Airflow DAG run cancelled: ${execution.airflow_dag_id} / ${execution.airflow_run_id}`);
+    } catch (err) {
+      console.warn(`⚠️ Could not cancel Airflow DAG run: ${err.message}`);
+    }
+  }
+
+  // Update execution record
+  execution.status = EXECUTION_STATUS.CANCELLED;
+  execution.completed_at = new Date();
+  execution.error_message = `Force stopped by user.${airflowCancelled ? ' Airflow DAG run cancelled.' : ' Could not reach Airflow — marked as cancelled locally.'}`;
+  await execution.save();
+
+  // Audit log
+  await auditService.logAction({
+    userId: req.user.id,
+    actionType: ACTION_TYPE.STATUS_CHANGE,
+    entityType: ENTITY_TYPE.PIPELINE_EXECUTION,
+    entityId: execution.id,
+    entityName: `Force Stop`,
+    details: { new_status: 'cancelled', airflow_cancelled: airflowCancelled, execution_type: getExecutionType(execution.airflow_dag_id) },
+    ipAddress: req.ip
+  });
+
+  return res.json({
+    id: execution.id,
+    status: execution.status,
+    message: `Execution force stopped.${airflowCancelled ? ' Airflow DAG run cancelled.' : ''}`,
+    airflow_cancelled: airflowCancelled
+  });
+}
+
 async function deleteExecution(req, res) {
   const executionId = parseInt(req.params.execution_id);
   const execution = await PipelineExecution.findOne({
@@ -304,5 +431,6 @@ module.exports = {
   getExecutionTaskLogs,
   getConfigExecutions,
   getMyExecutions,
+  forceStopExecution,
   deleteExecution
 };

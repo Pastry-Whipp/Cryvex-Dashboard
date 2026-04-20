@@ -5,9 +5,9 @@ let targetPool = null;
 function getTargetPool() {
   if (!targetPool) {
     targetPool = new Pool({
-      host: process.env.TARGET_DB_HOST || 'localhost',
+      host: process.env.TARGET_DB_HOST || 'etl_target_db',
       port: parseInt(process.env.TARGET_DB_PORT || '5432'),
-      database: process.env.TARGET_DB_NAME || 'cryvex_target',
+      database: process.env.TARGET_DB_NAME || 'etl_data',
       user: process.env.TARGET_DB_USER || 'postgres',
       password: process.env.TARGET_DB_PASSWORD || 'postgres',
       max: 10,
@@ -30,8 +30,8 @@ async function queryTargetDb(sql, params = []) {
   const pool = getTargetPool();
   const client = await pool.connect();
   try {
-    const result = await client.query(sql, params);
-    return result;
+    // Return the full pg result object so callers can access .rows, .fields, .rowCount, etc.
+    return await client.query(sql, params);
   } finally {
     client.release();
   }

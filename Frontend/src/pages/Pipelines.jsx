@@ -30,6 +30,23 @@ import { pipelineConfigService } from '../services/pipelineConfig.service';
 import { pipelineExecutionService } from '../services/pipelineExecution.service';
 import './Pipelines.css';
 
+function extractPipelineErrorSummary(errorMessage) {
+  if (!errorMessage) return 'Unknown error';
+  const lines = errorMessage.split('\n').map(l => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (/^[A-Z]\w*(Error|Exception|Failure):/.test(line)) {
+      return line.length > 120 ? line.substring(0, 117) + '...' : line;
+    }
+    if (/^ERROR\s*[-–]/.test(line)) {
+      const msg = line.replace(/^ERROR\s*[-–]\s*/, '');
+      return msg.length > 120 ? msg.substring(0, 117) + '...' : msg;
+    }
+  }
+  const first = lines.find(l => !l.startsWith('---')) || lines[0] || 'Unknown error';
+  return first.length > 120 ? first.substring(0, 117) + '...' : first;
+}
+
 const Pipelines = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [configs, setConfigs] = useState([]);
@@ -73,6 +90,38 @@ const Pipelines = () => {
       const data = await pipelineConfigService.getAll();
       setConfigs(data);
       setError(null);
+
+      // Load latest ETL execution for each config to show Last Run / Status on page load
+      try {
+        const allExecutions = await pipelineExecutionService.getMyExecutions({ limit: 200 });
+        const etlExecs = allExecutions.filter(e => e.execution_type === 'etl');
+
+        const latestByConfig = {};
+        for (const exec of etlExecs) {
+          const cid = exec.pipeline_config_id;
+          if (!latestByConfig[cid] || new Date(exec.created_at) > new Date(latestByConfig[cid].created_at)) {
+            latestByConfig[cid] = exec;
+          }
+        }
+
+        const restoredState = {};
+        for (const [configId, exec] of Object.entries(latestByConfig)) {
+          restoredState[configId] = {
+            status: exec.status,
+            executionId: exec.id,
+            airflowDagId: exec.airflow_dag_id,
+            airflowRunId: exec.airflow_run_id,
+            startedAt: exec.started_at,
+            completedAt: exec.completed_at,
+            taskProgress: exec.task_progress ? JSON.parse(exec.task_progress) : null,
+            error: exec.error_message
+          };
+        }
+
+        setExecutingPipelines(prev => ({ ...restoredState, ...prev }));
+      } catch (err) {
+        console.warn('Could not load execution history:', err);
+      }
     } catch (err) {
       console.error('Error loading configs:', err);
       setError('Failed to load pipeline configurations');
@@ -170,6 +219,37 @@ const Pipelines = () => {
       }));
     }
   }, [airflowHealthy]);
+
+  const handleForceStop = useCallback(async (configId) => {
+    const execution = executingPipelines[configId];
+    if (!execution?.executionId) return;
+
+    try {
+      await pipelineExecutionService.forceStop(execution.executionId);
+
+      // Stop the poller
+      const stopFn = activePollers[configId];
+      if (stopFn) stopFn();
+      setActivePollers(prev => {
+        const next = { ...prev };
+        delete next[configId];
+        return next;
+      });
+
+      // Update local state to cancelled
+      setExecutingPipelines(prev => ({
+        ...prev,
+        [configId]: {
+          ...prev[configId],
+          status: 'cancelled',
+          completedAt: new Date().toISOString(),
+          error: 'Force stopped by user'
+        }
+      }));
+    } catch (err) {
+      console.error('Error force stopping pipeline:', err);
+    }
+  }, [executingPipelines, activePollers]);
 
   const handleViewExecution = async (configId) => {
     const execution = executingPipelines[configId];
@@ -349,20 +429,38 @@ const Pipelines = () => {
     // Pending/Starting state
     if (status === 'pending') {
       return (
-        <Button variant="secondary" size="sm" disabled className="executing-btn">
-          <Loader2 size={16} className="spin" />
-          Starting...
-        </Button>
+        <div className="execution-running">
+          <Button variant="secondary" size="sm" disabled className="executing-btn">
+            <Loader2 size={16} className="spin" />
+            Starting...
+          </Button>
+          <button
+            className="force-stop-btn"
+            onClick={() => handleForceStop(config.id)}
+            title="Force stop"
+          >
+            <StopCircle size={14} />
+          </button>
+        </div>
       );
     }
 
     // Queued state
     if (status === 'queued') {
       return (
-        <Button variant="info" size="sm" disabled className="executing-btn">
-          <Clock size={16} />
-          Queued
-        </Button>
+        <div className="execution-running">
+          <Button variant="info" size="sm" disabled className="executing-btn">
+            <Clock size={16} />
+            Queued
+          </Button>
+          <button
+            className="force-stop-btn"
+            onClick={() => handleForceStop(config.id)}
+            title="Force stop"
+          >
+            <StopCircle size={14} />
+          </button>
+        </div>
       );
     }
 
@@ -380,12 +478,19 @@ const Pipelines = () => {
               </span>
             )}
           </Button>
-          <button 
+          <button
             className="view-details-btn"
             onClick={() => handleViewExecution(config.id)}
             title="View execution details"
           >
             <Info size={14} />
+          </button>
+          <button
+            className="force-stop-btn"
+            onClick={() => handleForceStop(config.id)}
+            title="Force stop"
+          >
+            <StopCircle size={14} />
           </button>
         </div>
       );
@@ -419,20 +524,53 @@ const Pipelines = () => {
     if (status === 'failed' || status === 'error') {
       return (
         <div className="execution-failed">
-          <Button 
-            variant="danger" 
-            size="sm" 
+          <div className="execution-failed-row">
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => handleExecute(config.id)}
+              className="retry-btn"
+              title={execution?.error || 'Execution failed'}
+            >
+              <XCircle size={16} />
+              Failed - Retry
+            </Button>
+            <button
+              className="view-details-btn"
+              onClick={() => handleViewExecution(config.id)}
+              title="View error details"
+            >
+              <Info size={14} />
+            </button>
+          </div>
+          {execution?.error && (
+            <div className="pipeline-error-preview" onClick={() => handleViewExecution(config.id)}>
+              <AlertCircle size={12} />
+              <span>{extractPipelineErrorSummary(execution.error)}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Cancelled state
+    if (status === 'cancelled') {
+      return (
+        <div className="execution-failed">
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => handleExecute(config.id)}
             className="retry-btn"
-            title={execution?.error || 'Execution failed'}
+            title="Execution was force stopped"
           >
-            <XCircle size={16} />
-            Failed - Retry
+            <StopCircle size={16} />
+            Stopped - Run Again
           </Button>
-          <button 
+          <button
             className="view-details-btn"
             onClick={() => handleViewExecution(config.id)}
-            title="View error details"
+            title="View details"
           >
             <Info size={14} />
           </button>
@@ -442,9 +580,9 @@ const Pipelines = () => {
 
     // Default - Ready to execute
     return (
-      <Button 
-        variant="primary" 
-        size="sm" 
+      <Button
+        variant="primary"
+        size="sm"
         onClick={() => handleExecute(config.id)}
         className="execute-btn"
       >
@@ -477,14 +615,17 @@ const Pipelines = () => {
       );
     }
 
+    const isTerminal = ['success', 'failed', 'cancelled'].includes(execution.status);
     return (
       <div className="pipeline-execution-stats">
         <div className="execution-stat">
           <span className="stat-label">
             <Clock size={12} />
-            Started
+            {isTerminal ? 'Last Run' : 'Started'}
           </span>
-          <span className="stat-value">{formatDate(execution.startedAt)}</span>
+          <span className="stat-value">
+            {formatDate(isTerminal ? (execution.completedAt || execution.startedAt) : execution.startedAt)}
+          </span>
         </div>
         <div className="execution-stat">
           <span className="stat-label">Status</span>

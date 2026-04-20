@@ -8,7 +8,8 @@ const User = sequelize.define('User', {
   full_name: { type: DataTypes.STRING, allowNull: true },
   hashed_password: { type: DataTypes.STRING, allowNull: false },
   is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
-  is_verified: { type: DataTypes.BOOLEAN, defaultValue: false }
+  is_verified: { type: DataTypes.BOOLEAN, defaultValue: false },
+  is_admin: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, {
   tableName: 'users',
   timestamps: true,

@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       try {
         const userData = await authService.getCurrentUser();
-        setUser(userData.data);
+        setUser(userData);
         setIsAuthenticated(true);
       } catch (error) {
         localStorage.clear();

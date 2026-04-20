@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
@@ -19,7 +20,8 @@ import {
     Search,
     Terminal,
     Database,
-    ShieldCheck
+    ShieldCheck,
+    ExternalLink
 } from 'lucide-react';
 
 const TYPE_CONFIG = {
@@ -37,7 +39,39 @@ const STATUS_CONFIG = {
     cancelled: { color: 'neutral',  icon: XCircle,      label: 'Cancelled' },
 };
 
+/**
+ * Extract a short human-readable error summary from the full error_message.
+ * Looks for common Python/Airflow error patterns and returns the most useful line.
+ */
+function extractErrorSummary(errorMessage) {
+    if (!errorMessage) return 'Unknown error';
+    const lines = errorMessage.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // Look for common error patterns (last meaningful error line)
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        // Python exceptions: "SomeError: message"
+        if (/^[A-Z]\w*(Error|Exception|Failure):/.test(line)) {
+            return line.length > 200 ? line.substring(0, 197) + '...' : line;
+        }
+        // "ERROR - message" from Airflow logs
+        if (/^ERROR\s*[-–]/.test(line)) {
+            const msg = line.replace(/^ERROR\s*[-–]\s*/, '');
+            return msg.length > 200 ? msg.substring(0, 197) + '...' : msg;
+        }
+        // "raise ..." lines
+        if (/^raise\s+/.test(line)) {
+            return line.length > 200 ? line.substring(0, 197) + '...' : line;
+        }
+    }
+
+    // Fallback: first non-empty line with "Task:" prefix stripped
+    const first = lines.find(l => !l.startsWith('---')) || lines[0] || 'Unknown error';
+    return first.length > 200 ? first.substring(0, 197) + '...' : first;
+}
+
 const Executions = () => {
+    const navigate = useNavigate();
     const [executions, setExecutions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -47,6 +81,9 @@ const Executions = () => {
     const [expandedId, setExpandedId] = useState(null);
     const [taskLogs, setTaskLogs] = useState({});
     const [loadingLogs, setLoadingLogs] = useState({});
+    // Full details fetched on-demand when expanding a non-active execution
+    const [executionDetails, setExecutionDetails] = useState({});
+    const [loadingDetails, setLoadingDetails] = useState({});
     const pollStoppers = useRef({});
 
     const fetchExecutions = useCallback(async () => {
@@ -138,8 +175,27 @@ const Executions = () => {
         }
     };
 
-    const toggleExpand = (id) => {
-        setExpandedId(prev => prev === id ? null : id);
+    const toggleExpand = async (id, exec) => {
+        if (expandedId === id) {
+            setExpandedId(null);
+            return;
+        }
+        setExpandedId(id);
+
+        // For non-active executions, fetch full details (task list + fresh logs)
+        // on first expand so the task viewer and error block are always populated.
+        const isActive = ['pending', 'queued', 'running'].includes(exec?.status);
+        if (!isActive && !executionDetails[id]) {
+            setLoadingDetails(prev => ({ ...prev, [id]: true }));
+            try {
+                const details = await pipelineExecutionService.getExecution(id, true);
+                setExecutionDetails(prev => ({ ...prev, [id]: details }));
+            } catch (err) {
+                console.error('Failed to fetch execution details:', err);
+            } finally {
+                setLoadingDetails(prev => ({ ...prev, [id]: false }));
+            }
+        }
     };
 
     const formatDate = (d) => {
@@ -250,16 +306,21 @@ const Executions = () => {
                         </div>
                     ) : (
                         filtered.map(exec => {
-                            const cfg = STATUS_CONFIG[exec.status] || STATUS_CONFIG.pending;
+                            // Merge in full details fetched on expand (task list, refreshed logs)
+                            const detail = executionDetails[exec.id];
+                            const merged = detail ? { ...exec, ...detail } : exec;
+
+                            const cfg = STATUS_CONFIG[merged.status] || STATUS_CONFIG.pending;
                             const StatusIcon = cfg.icon;
                             const isExpanded = expandedId === exec.id;
-                            const isActive = ['pending', 'queued', 'running'].includes(exec.status);
+                            const isActive = ['pending', 'queued', 'running'].includes(merged.status);
+                            const isLoadingDetail = loadingDetails[exec.id];
                             let progress = null;
-                            try { progress = exec.task_progress ? JSON.parse(exec.task_progress) : null; } catch {}
+                            try { progress = merged.task_progress ? JSON.parse(merged.task_progress) : null; } catch {}
 
                             return (
                                 <Card key={exec.id} className={`execution-card ${isActive ? 'execution-active' : ''}`}>
-                                    <div className="execution-row" onClick={() => toggleExpand(exec.id)}>
+                                    <div className="execution-row" onClick={() => toggleExpand(exec.id, exec)}>
                                         <div className="execution-status-icon">
                                             <StatusIcon
                                                 size={22}
@@ -270,11 +331,11 @@ const Executions = () => {
                                         <div className="execution-main">
                                             <div className="execution-title">
                                                 <span className="execution-name">
-                                                    {exec.config_name || exec.airflow_dag_id || `Execution #${exec.id}`}
+                                                    {merged.config_name || merged.airflow_dag_id || `Execution #${exec.id}`}
                                                 </span>
                                                 <Badge variant={cfg.color}>{cfg.label}</Badge>
                                                 {(() => {
-                                                    const type = TYPE_CONFIG[exec.execution_type] || TYPE_CONFIG.etl;
+                                                    const type = TYPE_CONFIG[merged.execution_type] || TYPE_CONFIG.etl;
                                                     const TypeIcon = type.Icon;
                                                     return (
                                                         <Badge variant={type.color}>
@@ -287,9 +348,9 @@ const Executions = () => {
                                             <div className="execution-meta">
                                                 <span>ID: {exec.id}</span>
                                                 <span className="meta-sep">|</span>
-                                                <span>{formatDate(exec.created_at)}</span>
+                                                <span>{formatDate(merged.created_at)}</span>
                                                 <span className="meta-sep">|</span>
-                                                <span>Duration: {getDuration(exec.started_at, exec.completed_at)}</span>
+                                                <span>Duration: {getDuration(merged.started_at, merged.completed_at)}</span>
                                                 {progress && progress.total > 0 && (
                                                     <>
                                                         <span className="meta-sep">|</span>
@@ -300,6 +361,15 @@ const Executions = () => {
                                         </div>
 
                                         <div className="execution-actions">
+                                            {merged.status === 'success' && (merged.execution_type || 'etl') === 'etl' && merged.pipeline_config_id && (
+                                                <button
+                                                    className="action-icon-btn"
+                                                    onClick={(e) => { e.stopPropagation(); navigate(`/data-explorer?pipeline_id=${merged.pipeline_config_id}`); }}
+                                                    title="View data in Explorer"
+                                                >
+                                                    <ExternalLink size={16} />
+                                                </button>
+                                            )}
                                             {!isActive && (
                                                 <button
                                                     className="action-icon-btn danger"
@@ -323,44 +393,64 @@ const Executions = () => {
                                         </div>
                                     )}
 
+                                    {/* Inline error preview for failed executions (visible without expanding) */}
+                                    {!isExpanded && merged.status === 'failed' && merged.error_message && (
+                                        <div className="execution-error-inline" onClick={(e) => { e.stopPropagation(); toggleExpand(exec.id, exec); }}>
+                                            <XCircle size={14} />
+                                            <span className="error-inline-text">
+                                                {extractErrorSummary(merged.error_message)}
+                                            </span>
+                                            <span className="error-inline-expand">View full logs ↓</span>
+                                        </div>
+                                    )}
+
                                     {/* Expanded Details */}
                                     {isExpanded && (
                                         <div className="execution-details">
+                                            {/* Loading spinner while fetching details */}
+                                            {isLoadingDetail && (
+                                                <div className="detail-loading">
+                                                    <Loader2 size={18} className="spin" />
+                                                    <span>Loading execution details…</span>
+                                                </div>
+                                            )}
+
                                             <div className="detail-grid">
                                                 <div className="detail-item">
                                                     <span className="detail-label">DAG ID</span>
-                                                    <span className="detail-value">{exec.airflow_dag_id || '-'}</span>
+                                                    <span className="detail-value">{merged.airflow_dag_id || '-'}</span>
                                                 </div>
                                                 <div className="detail-item">
                                                     <span className="detail-label">Run ID</span>
-                                                    <span className="detail-value mono">{exec.airflow_run_id || '-'}</span>
+                                                    <span className="detail-value mono">{merged.airflow_run_id || '-'}</span>
                                                 </div>
                                                 <div className="detail-item">
                                                     <span className="detail-label">Started</span>
-                                                    <span className="detail-value">{formatDate(exec.started_at)}</span>
+                                                    <span className="detail-value">{formatDate(merged.started_at)}</span>
                                                 </div>
                                                 <div className="detail-item">
                                                     <span className="detail-label">Completed</span>
-                                                    <span className="detail-value">{formatDate(exec.completed_at)}</span>
+                                                    <span className="detail-value">{formatDate(merged.completed_at)}</span>
                                                 </div>
                                             </div>
 
-                                            {exec.error_message && (
+                                            {/* Error / log block */}
+                                            {merged.error_message && (
                                                 <div className="execution-error-block">
                                                     <div className="error-header">
                                                         <XCircle size={16} />
                                                         <strong>Error Details</strong>
                                                     </div>
-                                                    <pre className="error-message-pre">{exec.error_message}</pre>
+                                                    <pre className="error-message-pre">{merged.error_message}</pre>
                                                 </div>
                                             )}
 
-                                            {/* Task instances */}
-                                            {exec.tasks && exec.tasks.length > 0 && (
+                                            {/* Task instances with per-task log viewer */}
+                                            {merged.tasks && merged.tasks.length > 0 && (
                                                 <div className="tasks-section">
                                                     <h4>Tasks</h4>
                                                     <div className="tasks-list">
-                                                        {exec.tasks.map(task => {
+                                                        {merged.tasks.map(task => {
                                                             const taskCfg = STATUS_CONFIG[task.state] || STATUS_CONFIG.pending;
                                                             const TaskIcon = taskCfg.icon;
                                                             const logKey = `${exec.id}_${task.task_id}`;
@@ -378,11 +468,13 @@ const Executions = () => {
                                                                             onClick={(e) => { e.stopPropagation(); handleViewLogs(exec.id, task.task_id); }}
                                                                         >
                                                                             <Terminal size={14} />
-                                                                            {taskLogs[logKey] ? 'Hide Logs' : 'Logs'}
+                                                                            {taskLogs[logKey] ? 'Hide Logs' : 'View Full Logs'}
                                                                         </button>
                                                                     </div>
                                                                     {loadingLogs[logKey] && (
-                                                                        <div className="task-logs-loading">Loading logs...</div>
+                                                                        <div className="task-logs-loading">
+                                                                            <Loader2 size={14} className="spin" /> Loading logs…
+                                                                        </div>
                                                                     )}
                                                                     {taskLogs[logKey] && (
                                                                         <pre className="task-logs">{taskLogs[logKey]}</pre>
@@ -394,11 +486,11 @@ const Executions = () => {
                                                 </div>
                                             )}
 
-                                            {/* If no tasks yet but execution has logs field */}
-                                            {exec.logs && (
+                                            {/* Fallback: raw logs field */}
+                                            {merged.logs && !merged.tasks && (
                                                 <div className="tasks-section">
                                                     <h4>Logs</h4>
-                                                    <pre className="task-logs">{exec.logs}</pre>
+                                                    <pre className="task-logs">{merged.logs}</pre>
                                                 </div>
                                             )}
                                         </div>

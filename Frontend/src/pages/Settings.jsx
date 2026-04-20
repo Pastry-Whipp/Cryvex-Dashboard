@@ -57,6 +57,16 @@ const SettingsPage = () => {
     checkConnections();
   }, []);
 
+  // Sync formData whenever user loads (e.g. after page refresh when user arrives asynchronously)
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        full_name: user.full_name || '',
+        email: user.email || ''
+      });
+    }
+  }, [user]);
+
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -210,7 +220,7 @@ const SettingsPage = () => {
                   <div className="settings-detail-row">
                     <Shield size={16} />
                     <span className="detail-key">Role</span>
-                    <span className="detail-val">{user?.role || 'Operator'}</span>
+                    <span className="detail-val">{user?.is_admin ? 'Admin' : 'User'}</span>
                   </div>
                   <div className="settings-detail-row">
                     <Calendar size={16} />

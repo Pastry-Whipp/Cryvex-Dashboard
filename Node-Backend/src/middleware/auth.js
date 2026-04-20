@@ -32,4 +32,13 @@ async function authenticateActive(req, res, next) {
   });
 }
 
-module.exports = { authenticate, authenticateActive };
+async function authenticateAdmin(req, res, next) {
+  await authenticateActive(req, res, () => {
+    if (req.user.is_admin !== true) {
+      return res.status(403).json({ detail: 'Admin access required' });
+    }
+    next();
+  });
+}
+
+module.exports = { authenticate, authenticateActive, authenticateAdmin };

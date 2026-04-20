@@ -141,12 +141,21 @@ const generateDerivedTablesYAML = (derivedTables) => {
   if (!derivedTables || derivedTables.length === 0) {
     return '  # No derived tables defined';
   }
-  return derivedTables.map(table => {
-    // Use customName if name is 'custom', otherwise use name
-    const rawTableName = table.name === 'custom'
-      ? (table.customName || 'unnamed_derived_table')
-      : (table.name || 'unnamed_derived_table');
-    const tableName = sanitizeTableName(rawTableName);
+  const seenKeys = new Set();
+  return derivedTables.map((table, idx) => {
+    // Prefer explicit name, fall back to targetTableName, finally a unique placeholder
+    const rawTableName =
+      (table.name && table.name.trim()) ||
+      (table.targetTableName && table.targetTableName.trim()) ||
+      `derived_table_${idx + 1}`;
+    let tableName = sanitizeTableName(rawTableName);
+    // Guarantee uniqueness so YAML keys never collide
+    if (seenKeys.has(tableName)) {
+      let suffix = 2;
+      while (seenKeys.has(`${tableName}_${suffix}`)) suffix++;
+      tableName = `${tableName}_${suffix}`;
+    }
+    seenKeys.add(tableName);
     const depends = table.dependsOn && table.dependsOn.length > 0
       ? `[${table.dependsOn.map(d => `"${sanitizeTableName(d)}"`).join(', ')}]`
       : '[]';

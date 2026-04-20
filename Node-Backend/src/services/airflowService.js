@@ -132,6 +132,20 @@ class AirflowService {
     return res.data;
   }
 
+  /**
+   * Force-stop a DAG run by setting its state to 'failed' via the Airflow REST API.
+   * Airflow 2.x: PATCH /dags/{dag_id}/dagRuns/{dag_run_id}  { "state": "failed" }
+   */
+  async cancelDagRun(dagId, runId) {
+    console.log(`Force-stopping DAG run: ${dagId} / ${runId}`);
+    const res = await axios.patch(
+      `${this._baseUrl}/dags/${dagId}/dagRuns/${runId}`,
+      { state: 'failed' },
+      { headers: this._getHeaders(), timeout: 30000 }
+    );
+    return res.data;
+  }
+
   mapAirflowStateToStatus(state) {
     const mapping = {
       queued: 'queued',

@@ -2,7 +2,8 @@ import React from 'react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
 import Badge from '../common/Badge';
-import { CheckCircle, XCircle, AlertTriangle, Shield, Database, Hash, List } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Shield, Database, Hash, List, Download } from 'lucide-react';
+import { generatePipelineVerificationPDF } from '../../utils/reportGenerator';
 import './VerificationResultsModal.css';
 
 const VerificationResultsModal = ({ isOpen, onClose, verification }) => {
@@ -16,8 +17,8 @@ const VerificationResultsModal = ({ isOpen, onClose, verification }) => {
     const taskProgress = verification.task_progress ? JSON.parse(verification.task_progress) : null;
     const tasks = verification.tasks || [];
 
-    // Extract verification tasks (those starting with verify_)
-    const verificationTasks = tasks.filter(task => task.task_id.startsWith('verify_'));
+    // Show all tasks — the verification DAG uses a single 'run_verification' task
+    const verificationTasks = tasks;
 
     const getTaskIcon = (state) => {
         if (state === 'success') return <CheckCircle size={16} className="task-icon success" />;
@@ -122,11 +123,11 @@ const VerificationResultsModal = ({ isOpen, onClose, verification }) => {
                         <div className="tables-section">
                             <h4 className="section-title">
                                 <Database size={18} />
-                                Table Verification Details
+                                Verification Task Details
                             </h4>
                             <div className="tables-list">
                                 {verificationTasks.map((task, index) => {
-                                    const tableName = task.task_id.replace('verify_', '');
+                                    const tableName = task.task_id.replace(/^(verify_|run_)/, '');
                                     return (
                                         <div key={index} className={`table-item ${task.state}`}>
                                             <div className="table-header">
@@ -202,6 +203,15 @@ const VerificationResultsModal = ({ isOpen, onClose, verification }) => {
                 </div>
             </Modal.Body>
             <Modal.Footer>
+                {(isSuccess || isFailed) && (
+                    <Button
+                        variant="outline"
+                        onClick={() => generatePipelineVerificationPDF({ verification })}
+                    >
+                        <Download size={16} />
+                        Download Report
+                    </Button>
+                )}
                 <Button variant="primary" onClick={onClose}>
                     Close
                 </Button>

@@ -9,6 +9,10 @@ import {
   GitBranch, Activity, Shield, Plus, Upload, CheckCircle, Clock,
   FileCode, User, Calendar, Loader2, XCircle, CheckCircle2, Database
 } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend
+} from 'recharts';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
 import { pipelineExecutionService } from '../services/pipelineExecution.service';
 import { useAuth } from '../hooks/useAuth';
@@ -187,6 +191,11 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* Analytics Charts */}
+        {!loading && !execsLoading && (configs.length > 0 || recentExecs.length > 0) && (
+          <DashboardCharts configs={configs} executions={recentExecs} />
+        )}
+
         {/* Recent Pipeline Configs */}
         <div className="dashboard-section">
           <div className="section-header">
@@ -326,6 +335,162 @@ const Dashboard = () => {
         </div>
       </div>
     </DashboardLayout>
+  );
+};
+
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#06b6d4', '#ef4444', '#8b5cf6', '#ec4899'];
+
+const STATUS_COLORS = {
+  success: '#10b981',
+  failed: '#ef4444',
+  running: '#f59e0b',
+  pending: '#94a3b8',
+  queued: '#06b6d4',
+  cancelled: '#6b7280',
+};
+
+const DashboardCharts = ({ configs, executions }) => {
+  // Domain distribution from configs
+  const domainCounts = {};
+  configs.forEach(c => {
+    const domain = c.domain || 'Unspecified';
+    domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+  });
+  const domainData = Object.entries(domainCounts).map(([name, value]) => ({
+    name, value
+  }));
+
+  // Execution status distribution
+  const statusCounts = {};
+  executions.forEach(e => {
+    const status = e.status || 'unknown';
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  });
+  const statusData = Object.entries(statusCounts).map(([name, value]) => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    value,
+    fill: STATUS_COLORS[name] || '#94a3b8'
+  }));
+
+  // Executions over last 7 days
+  const now = new Date();
+  const dayLabels = [];
+  const dayCounts = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    const label = d.toLocaleDateString('en-US', { weekday: 'short' });
+    dayLabels.push({ key, label });
+    dayCounts[key] = { day: label, success: 0, failed: 0, other: 0 };
+  }
+  executions.forEach(e => {
+    const date = new Date(e.created_at).toISOString().split('T')[0];
+    if (dayCounts[date]) {
+      if (e.status === 'success') dayCounts[date].success++;
+      else if (e.status === 'failed') dayCounts[date].failed++;
+      else dayCounts[date].other++;
+    }
+  });
+  const weeklyData = dayLabels.map(d => dayCounts[d.key]);
+
+  const tooltipStyle = {
+    backgroundColor: 'var(--card)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--foreground)',
+    fontSize: '13px'
+  };
+
+  return (
+    <div className="dashboard-charts">
+      <div className="charts-row">
+        {/* Domain Distribution */}
+        <Card className="chart-card">
+          <div className="chart-header">
+            <h3 className="section-title">Pipeline Domains</h3>
+          </div>
+          <div className="chart-body">
+            {domainData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={domainData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={85}
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, value }) => `${name} (${value})`}
+                  >
+                    {domainData.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="chart-empty">No pipelines configured yet</p>
+            )}
+          </div>
+        </Card>
+
+        {/* Execution Status */}
+        <Card className="chart-card">
+          <div className="chart-header">
+            <h3 className="section-title">Execution Status</h3>
+          </div>
+          <div className="chart-body">
+            {statusData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={85}
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, value }) => `${name} (${value})`}
+                  >
+                    {statusData.map((entry, i) => (
+                      <Cell key={i} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="chart-empty">No executions yet</p>
+            )}
+          </div>
+        </Card>
+
+        {/* Weekly Activity */}
+        <Card className="chart-card chart-card-wide">
+          <div className="chart-header">
+            <h3 className="section-title">Weekly Activity</h3>
+          </div>
+          <div className="chart-body">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={weeklyData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
+                <Bar dataKey="success" name="Success" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="other" name="Other" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+    </div>
   );
 };
 

@@ -3,6 +3,7 @@ const path = require('path');
 
 const CONFIG_BASE_DIR = path.join(__dirname, '..', '..', 'pipeline_configs');
 const SCHEMAS_DIR = path.join(CONFIG_BASE_DIR, 'schemas');
+const DATASETS_DIR = path.join(CONFIG_BASE_DIR, 'datasets');
 
 function ensureConfigDirectory() {
   if (!fs.existsSync(CONFIG_BASE_DIR)) {
@@ -105,4 +106,50 @@ function deleteConfigFile(configId) {
   }
 }
 
-module.exports = { saveConfigFile, saveSchemaFiles, updateConfigFile, deleteConfigFile };
+/**
+ * Save an uploaded CSV dataset for a specific table inside the shared
+ * pipeline_configs volume. Both the backend and Airflow workers can read
+ * this path (it's mounted at /app/pipeline_configs on backend and
+ * /opt/airflow/pipeline_configs on Airflow).
+ *
+ * Layout: /app/pipeline_configs/datasets/{configId}/{tableName}.csv
+ * Airflow sees it at: /opt/airflow/pipeline_configs/datasets/{configId}/{tableName}.csv
+ *
+ * Returns the absolute path INSIDE the Airflow container (what we bake into
+ * the YAML so the worker can open it).
+ */
+function saveDatasetFile(configId, tableName, buffer) {
+  ensureConfigDirectory();
+  const dir = path.join(DATASETS_DIR, String(configId));
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const safeName = String(tableName).replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const filePath = path.join(dir, `${safeName}.csv`);
+  fs.writeFileSync(filePath, buffer);
+  console.log(`Saved dataset file: ${filePath} (${buffer.length} bytes)`);
+  return `/opt/airflow/pipeline_configs/datasets/${configId}/${safeName}.csv`;
+}
+
+/**
+ * Save a single schema JSON for one table (used by the upload-bundle flow).
+ * Returns the Airflow-side path.
+ */
+function saveSingleSchemaFile(tableName, schemaObject) {
+  ensureSchemasDirectory();
+  const safeName = String(tableName).replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const filePath = path.join(SCHEMAS_DIR, `${safeName}_schema.json`);
+  const withName = { table_name: tableName, ...schemaObject };
+  fs.writeFileSync(filePath, JSON.stringify(withName, null, 2), 'utf8');
+  console.log(`Saved schema file: ${filePath}`);
+  return `/opt/airflow/pipeline_configs/schemas/${safeName}_schema.json`;
+}
+
+module.exports = {
+  saveConfigFile,
+  saveSchemaFiles,
+  saveSingleSchemaFile,
+  saveDatasetFile,
+  updateConfigFile,
+  deleteConfigFile
+};

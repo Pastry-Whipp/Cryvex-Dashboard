@@ -21,7 +21,7 @@ const Navbar = () => {
           <Link to="/profile" className="navbar-user">
             <div className="navbar-user-info">
               <span className="navbar-user-name">{user?.full_name || 'User'}</span>
-              <span className="navbar-user-role">{user?.role || 'Operator'}</span>
+              <span className="navbar-user-role">{user?.is_admin ? 'Admin' : 'User'}</span>
             </div>
             <div className="navbar-user-avatar">
               <User size={20} />

@@ -181,6 +181,130 @@ class TargetDatabaseService {
     const result = await queryTargetDb(`SELECT * FROM "${schema}"."${tableName}" LIMIT $1`, [limit]);
     return result.rows;
   }
+
+  async getTableStats(tableName, schema = 'public') {
+    const columns = await this.getTableColumns(tableName, schema);
+
+    // Get row count
+    const countResult = await queryTargetDb(
+      `SELECT COUNT(*) as total FROM "${schema}"."${tableName}"`
+    );
+    const totalRows = parseInt(countResult.rows[0].total);
+
+    const columnStats = [];
+
+    for (const col of columns) {
+      const colName = col.column_name;
+      const dataType = col.data_type;
+
+      // Basic stats: null count, distinct count
+      const basicResult = await queryTargetDb(
+        `SELECT
+          COUNT(*) FILTER (WHERE "${colName}" IS NULL) as null_count,
+          COUNT(DISTINCT "${colName}") as distinct_count
+        FROM "${schema}"."${tableName}"`
+      );
+
+      const stat = {
+        column_name: colName,
+        data_type: dataType,
+        null_count: parseInt(basicResult.rows[0].null_count),
+        distinct_count: parseInt(basicResult.rows[0].distinct_count),
+        null_percentage: totalRows > 0
+          ? parseFloat(((parseInt(basicResult.rows[0].null_count) / totalRows) * 100).toFixed(1))
+          : 0
+      };
+
+      // Numeric columns: min, max, avg
+      const numericTypes = ['integer', 'bigint', 'smallint', 'numeric', 'real', 'double precision'];
+      if (numericTypes.includes(dataType)) {
+        try {
+          const numResult = await queryTargetDb(
+            `SELECT
+              MIN("${colName}")::float as min_val,
+              MAX("${colName}")::float as max_val,
+              AVG("${colName}")::float as avg_val,
+              SUM("${colName}")::float as sum_val
+            FROM "${schema}"."${tableName}"
+            WHERE "${colName}" IS NOT NULL`
+          );
+          if (numResult.rows[0]) {
+            stat.min = numResult.rows[0].min_val;
+            stat.max = numResult.rows[0].max_val;
+            stat.avg = numResult.rows[0].avg_val !== null
+              ? parseFloat(numResult.rows[0].avg_val.toFixed(2))
+              : null;
+            stat.sum = numResult.rows[0].sum_val;
+          }
+
+          // Distribution: 10 buckets
+          if (stat.min !== null && stat.max !== null && stat.min !== stat.max) {
+            const bucketResult = await queryTargetDb(
+              `SELECT
+                width_bucket("${colName}"::float, $1::float, $2::float + 0.001, 10) as bucket,
+                COUNT(*) as count
+              FROM "${schema}"."${tableName}"
+              WHERE "${colName}" IS NOT NULL
+              GROUP BY bucket
+              ORDER BY bucket`,
+              [stat.min, stat.max]
+            );
+            const range = stat.max - stat.min;
+            stat.distribution = bucketResult.rows.map(r => ({
+              bucket: parseInt(r.bucket),
+              count: parseInt(r.count),
+              range_start: parseFloat((stat.min + (parseInt(r.bucket) - 1) * (range / 10)).toFixed(2)),
+              range_end: parseFloat((stat.min + parseInt(r.bucket) * (range / 10)).toFixed(2))
+            }));
+          }
+        } catch (err) {
+          // skip numeric stats if query fails
+        }
+      }
+
+      // Text / categorical columns: top 10 values
+      const textTypes = ['character varying', 'text', 'varchar', 'boolean'];
+      if (textTypes.includes(dataType) || stat.distinct_count <= 50) {
+        try {
+          const topResult = await queryTargetDb(
+            `SELECT "${colName}"::text as value, COUNT(*) as count
+            FROM "${schema}"."${tableName}"
+            WHERE "${colName}" IS NOT NULL
+            GROUP BY "${colName}"
+            ORDER BY count DESC
+            LIMIT 10`
+          );
+          stat.top_values = topResult.rows.map(r => ({
+            value: r.value,
+            count: parseInt(r.count)
+          }));
+        } catch (err) {
+          // skip top values if query fails
+        }
+      }
+
+      columnStats.push(stat);
+    }
+
+    // Column type distribution
+    const typeCounts = {};
+    columns.forEach(c => {
+      const type = c.data_type;
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    });
+    const typeDistribution = Object.entries(typeCounts).map(([type, count]) => ({
+      type,
+      count
+    }));
+
+    return {
+      table_name: tableName,
+      total_rows: totalRows,
+      total_columns: columns.length,
+      type_distribution: typeDistribution,
+      column_stats: columnStats
+    };
+  }
 }
 
 const targetDbService = new TargetDatabaseService();

@@ -9,6 +9,7 @@ router.get('/pipelines/:pipeline_id/tables', authenticateActive, ctrl.getPipelin
 router.get('/tables/:table_name/columns', authenticateActive, ctrl.getTableColumns);
 router.get('/tables/:table_name/data', authenticateActive, ctrl.getTableData);
 router.get('/tables/:table_name/sample', authenticateActive, ctrl.getTableSample);
+router.get('/tables/:table_name/stats', authenticateActive, ctrl.getTableStats);
 router.post('/query', authenticateActive, ctrl.executeQuery);
 
 module.exports = router;

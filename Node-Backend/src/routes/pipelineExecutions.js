@@ -11,6 +11,7 @@ router.post('/:config_id/execute', authenticateActive, ctrl.executePipeline);
 router.get('/', authenticateActive, ctrl.getMyExecutions);
 router.get('/:execution_id', authenticateActive, ctrl.getExecution);
 router.get('/:execution_id/logs/:task_id', authenticateActive, ctrl.getExecutionTaskLogs);
+router.post('/:execution_id/stop', authenticateActive, ctrl.forceStopExecution);
 router.delete('/:execution_id', authenticateActive, ctrl.deleteExecution);
 
 module.exports = router;

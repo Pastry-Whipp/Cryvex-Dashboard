@@ -206,7 +206,7 @@ const Profile = () => {
                     </div>
                     <div className="detail-content">
                       <span className="detail-label">Role</span>
-                      <span className="detail-value">{user?.role || 'Operator'}</span>
+                      <span className="detail-value">{user?.is_admin ? 'Admin' : 'User'}</span>
                     </div>
                   </div>
 

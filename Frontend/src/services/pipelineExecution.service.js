@@ -70,6 +70,15 @@ export const pipelineExecutionService = {
   },
 
   /**
+   * Force stop a running/queued/pending execution
+   * @param {number} executionId - The execution ID
+   */
+  forceStop: async (executionId) => {
+    const response = await api.post(`/pipeline-executions/${executionId}/stop`);
+    return response.data;
+  },
+
+  /**
    * Delete an execution record
    * @param {number} executionId - The execution ID
    */

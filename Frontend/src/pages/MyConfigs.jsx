@@ -31,14 +31,35 @@ const MyConfigs = () => {
   const [success, setSuccess] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Two-step upload flow:
+  //   step 1 = pick YAML + enter metadata → /parse-yaml
+  //   step 2 = review parsed tables, attach one CSV + one schema JSON each
+  const [uploadStep, setUploadStep] = useState(1);
   const [uploadFormData, setUploadFormData] = useState({
     name: '',
     description: '',
     domain: '',
     version: '',
-    yamlFile: null,
-    schemasFile: null
+    yamlFile: null
   });
+  const [parsedPreview, setParsedPreview] = useState(null);   // { fixes_applied, summary, normalized_yaml }
+  const [tableFiles, setTableFiles] = useState({});           // { tableName: { csv: File, schema: File } }
+  const [parseError, setParseError] = useState(null);
+
+  const resetUploadModal = () => {
+    setShowUploadModal(false);
+    setUploadStep(1);
+    setParsedPreview(null);
+    setTableFiles({});
+    setParseError(null);
+    setUploadFormData({
+      name: '',
+      description: '',
+      domain: '',
+      version: '',
+      yamlFile: null
+    });
+  };
 
   useEffect(() => {
     loadConfigs();
@@ -158,65 +179,77 @@ const MyConfigs = () => {
     }
   };
 
-  const handleFileSelect = (e, type) => {
+  const handleYamlFileSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (type === 'yaml') {
-        setUploadFormData({ ...uploadFormData, yamlFile: file });
-      } else {
-        setUploadFormData({ ...uploadFormData, schemasFile: file });
-      }
+      setUploadFormData({ ...uploadFormData, yamlFile: file });
+      setParseError(null);
     }
   };
 
-  const handleUpload = async () => {
-    if (!uploadFormData.name || !uploadFormData.yamlFile || !uploadFormData.schemasFile) {
-      setError('Please fill in all required fields and select files');
+  const handleTableFileSelect = (tableName, kind, file) => {
+    setTableFiles((prev) => ({
+      ...prev,
+      [tableName]: { ...(prev[tableName] || {}), [kind]: file }
+    }));
+  };
+
+  // Step 1 → Step 2: send the YAML to the backend for parsing + auto-fix.
+  const handleParseYaml = async () => {
+    if (!uploadFormData.name) {
+      setParseError('Configuration name is required');
       return;
     }
+    if (!uploadFormData.yamlFile) {
+      setParseError('Select a YAML file first');
+      return;
+    }
+    try {
+      setUploading(true);
+      setParseError(null);
+      const preview = await pipelineConfigService.parseYaml(uploadFormData.yamlFile);
+      setParsedPreview(preview);
+      // Reset per-table file state in case user re-parses.
+      const initial = {};
+      (preview.summary?.base_tables || []).forEach(t => { initial[t.name] = { csv: null, schema: null }; });
+      setTableFiles(initial);
+      setUploadStep(2);
+    } catch (err) {
+      console.error('Parse YAML error:', err);
+      setParseError(err.response?.data?.detail || 'Failed to parse YAML file');
+    } finally {
+      setUploading(false);
+    }
+  };
 
+  // Step 2 → commit: send YAML + per-table CSV/schema files.
+  const handleCommitBundle = async () => {
+    const baseTables = parsedPreview?.summary?.base_tables || [];
+    const missing = baseTables.filter(
+      t => !tableFiles[t.name]?.csv || !tableFiles[t.name]?.schema
+    );
+    if (missing.length) {
+      setError(`Missing CSV or schema for: ${missing.map(t => t.name).join(', ')}`);
+      return;
+    }
     try {
       setUploading(true);
       setError(null);
-
-      // Read files
-      const yamlContent = await uploadFormData.yamlFile.text();
-      const schemasContent = await uploadFormData.schemasFile.text();
-
-      // Validate JSON schemas
-      try {
-        JSON.parse(schemasContent);
-      } catch (err) {
-        setError('Invalid JSON format in schemas file');
-        setUploading(false);
-        return;
-      }
-
-      // Create config
-      await pipelineConfigService.create({
+      await pipelineConfigService.uploadBundle({
         name: uploadFormData.name,
-        description: uploadFormData.description || null,
-        domain: uploadFormData.domain || null,
-        version: uploadFormData.version || null,
-        yaml_config: yamlContent,
-        json_schemas: schemasContent
+        description: uploadFormData.description,
+        domain: uploadFormData.domain,
+        version: uploadFormData.version,
+        yamlText: parsedPreview.normalized_yaml,
+        tableFiles
       });
-
-      setSuccess('Pipeline configuration uploaded successfully');
-      setShowUploadModal(false);
-      setUploadFormData({
-        name: '',
-        description: '',
-        domain: '',
-        version: '',
-        yamlFile: null,
-        schemasFile: null
-      });
+      setSuccess('Pipeline configuration uploaded and wired up successfully');
+      resetUploadModal();
       loadConfigs();
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccess(null), 4000);
     } catch (err) {
-      console.error('Error uploading config:', err);
-      setError(err.response?.data?.detail || 'Failed to upload pipeline configuration');
+      console.error('Upload bundle error:', err);
+      setError(err.response?.data?.detail || 'Failed to upload pipeline bundle');
     } finally {
       setUploading(false);
     }
@@ -345,111 +378,224 @@ const MyConfigs = () => {
           </div>
         )}
 
-        {/* Upload Modal */}
+        {/* Upload Modal — two-step flow */}
         {showUploadModal && (
           <Modal
             isOpen={showUploadModal}
-            onClose={() => setShowUploadModal(false)}
+            onClose={resetUploadModal}
             size="lg"
           >
             <Modal.Header>
-              <Modal.Title>Upload Pipeline Configuration</Modal.Title>
+              <Modal.Title>
+                {uploadStep === 1 ? 'Upload Pipeline YAML' : 'Attach CSV + Schema per Table'}
+              </Modal.Title>
             </Modal.Header>
             <Modal.Body>
-              <div className="upload-form">
-                <Input
-                  label="Configuration Name"
-                  placeholder="e.g., Banking ETL Pipeline"
-                  value={uploadFormData.name}
-                  onChange={(e) =>
-                    setUploadFormData({ ...uploadFormData, name: e.target.value })
-                  }
-                  required
-                />
-                <Input
-                  label="Description"
-                  placeholder="Brief description of the pipeline"
-                  value={uploadFormData.description}
-                  onChange={(e) =>
-                    setUploadFormData({ ...uploadFormData, description: e.target.value })
-                  }
-                />
-                <div className="form-row">
+              {uploadStep === 1 && (
+                <div className="upload-form">
                   <Input
-                    label="Domain"
-                    placeholder="e.g., banking"
-                    value={uploadFormData.domain}
+                    label="Configuration Name"
+                    placeholder="e.g., Banking ETL Pipeline"
+                    value={uploadFormData.name}
                     onChange={(e) =>
-                      setUploadFormData({ ...uploadFormData, domain: e.target.value })
+                      setUploadFormData({ ...uploadFormData, name: e.target.value })
                     }
+                    required
                   />
                   <Input
-                    label="Version"
-                    placeholder="e.g., 1.0"
-                    value={uploadFormData.version}
+                    label="Description"
+                    placeholder="Brief description of the pipeline"
+                    value={uploadFormData.description}
                     onChange={(e) =>
-                      setUploadFormData({ ...uploadFormData, version: e.target.value })
+                      setUploadFormData({ ...uploadFormData, description: e.target.value })
                     }
                   />
-                </div>
-                <div className="file-upload-section">
-                  <label className="file-upload-label">
-                    <span>YAML Configuration File *</span>
-                    <input
-                      type="file"
-                      accept=".yaml,.yml"
-                      onChange={(e) => handleFileSelect(e, 'yaml')}
+                  <div className="form-row">
+                    <Input
+                      label="Domain"
+                      placeholder="e.g., banking"
+                      value={uploadFormData.domain}
+                      onChange={(e) =>
+                        setUploadFormData({ ...uploadFormData, domain: e.target.value })
+                      }
                     />
-                    <div className="file-upload-display">
-                      {uploadFormData.yamlFile ? (
-                        <span className="file-name">
-                          <FileCode size={16} />
-                          {uploadFormData.yamlFile.name}
-                        </span>
-                      ) : (
-                        <span className="file-placeholder">Select YAML file</span>
-                      )}
-                    </div>
-                  </label>
-                </div>
-                <div className="file-upload-section">
-                  <label className="file-upload-label">
-                    <span>JSON Schemas File *</span>
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={(e) => handleFileSelect(e, 'schemas')}
+                    <Input
+                      label="Version"
+                      placeholder="e.g., 1.0"
+                      value={uploadFormData.version}
+                      onChange={(e) =>
+                        setUploadFormData({ ...uploadFormData, version: e.target.value })
+                      }
                     />
-                    <div className="file-upload-display">
-                      {uploadFormData.schemasFile ? (
-                        <span className="file-name">
-                          <FileJson size={16} />
-                          {uploadFormData.schemasFile.name}
-                        </span>
-                      ) : (
-                        <span className="file-placeholder">Select JSON schemas file</span>
-                      )}
-                    </div>
-                  </label>
+                  </div>
+                  <div className="file-upload-section">
+                    <label className="file-upload-label">
+                      <span>YAML Configuration File *</span>
+                      <input
+                        type="file"
+                        accept=".yaml,.yml"
+                        onChange={handleYamlFileSelect}
+                      />
+                      <div className="file-upload-display">
+                        {uploadFormData.yamlFile ? (
+                          <span className="file-name">
+                            <FileCode size={16} />
+                            {uploadFormData.yamlFile.name}
+                          </span>
+                        ) : (
+                          <span className="file-placeholder">Select YAML file</span>
+                        )}
+                      </div>
+                    </label>
+                    <p className="input-hint" style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                      The file will be parsed on the server. Common mistakes
+                      (wrong Airflow paths, wrong DB host, host.docker.internal
+                      RPC URL) are auto-fixed before you commit.
+                    </p>
+                  </div>
+                  {parseError && (
+                    <Alert variant="error">{parseError}</Alert>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {uploadStep === 2 && parsedPreview && (
+                <div className="upload-form">
+                  {parsedPreview.fixes_applied?.length > 0 && (
+                    <Alert variant="info">
+                      <strong>Auto-fixes applied:</strong>
+                      <ul style={{ margin: '6px 0 0 18px' }}>
+                        {parsedPreview.fixes_applied.map((f, i) => <li key={i}>{f}</li>)}
+                      </ul>
+                    </Alert>
+                  )}
+
+                  <p style={{ margin: '12px 0 4px' }}>
+                    <strong>Base tables detected:</strong>{' '}
+                    {parsedPreview.summary.base_tables.length}
+                    {parsedPreview.summary.derived_tables.length > 0 && (
+                      <> &middot; <strong>Derived:</strong> {parsedPreview.summary.derived_tables.length}</>
+                    )}
+                  </p>
+                  <p className="input-hint" style={{ fontSize: 12, opacity: 0.75, marginBottom: 16 }}>
+                    Attach one CSV data file and one JSON schema file for each base table.
+                    Both are required. Derived tables are computed from SQL so they need neither.
+                  </p>
+
+                  {parsedPreview.summary.base_tables.map((t) => {
+                    const picked = tableFiles[t.name] || {};
+                    return (
+                      <Card key={t.name} style={{ padding: 14, marginBottom: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div>
+                            <strong>{t.name}</strong>
+                            {t.target_table_name && t.target_table_name !== t.name && (
+                              <span style={{ marginLeft: 8, opacity: 0.7 }}>
+                                → target: {t.target_table_name}
+                              </span>
+                            )}
+                          </div>
+                          {t.priority != null && (
+                            <Badge variant="info">priority {t.priority}</Badge>
+                          )}
+                        </div>
+
+                        <div className="form-row">
+                          <label className="file-upload-label" style={{ flex: 1 }}>
+                            <span>CSV Data File *</span>
+                            <input
+                              type="file"
+                              accept=".csv,text/csv"
+                              onChange={(e) => handleTableFileSelect(t.name, 'csv', e.target.files[0])}
+                            />
+                            <div className="file-upload-display">
+                              {picked.csv ? (
+                                <span className="file-name">
+                                  <FileCode size={14} /> {picked.csv.name}
+                                </span>
+                              ) : (
+                                <span className="file-placeholder">Select CSV</span>
+                              )}
+                            </div>
+                          </label>
+
+                          <label className="file-upload-label" style={{ flex: 1 }}>
+                            <span>Schema JSON *</span>
+                            <input
+                              type="file"
+                              accept=".json,application/json"
+                              onChange={(e) => handleTableFileSelect(t.name, 'schema', e.target.files[0])}
+                            />
+                            <div className="file-upload-display">
+                              {picked.schema ? (
+                                <span className="file-name">
+                                  <FileJson size={14} /> {picked.schema.name}
+                                </span>
+                              ) : (
+                                <span className="file-placeholder">Select schema</span>
+                              )}
+                            </div>
+                          </label>
+                        </div>
+                      </Card>
+                    );
+                  })}
+
+                  {parsedPreview.summary.derived_tables.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <strong>Derived tables (no upload needed):</strong>
+                      <ul style={{ margin: '6px 0 0 18px', fontSize: 13 }}>
+                        {parsedPreview.summary.derived_tables.map((d) => (
+                          <li key={d.name}>
+                            {d.name}
+                            {d.depends_on?.length > 0 && (
+                              <span style={{ opacity: 0.65 }}> &nbsp;depends on: {d.depends_on.join(', ')}</span>
+                            )}
+                            {!d.has_sql && <span style={{ color: 'red' }}> &nbsp;(missing SQL!)</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </Modal.Body>
             <Modal.Footer>
               <Button
                 variant="ghost"
-                onClick={() => setShowUploadModal(false)}
+                onClick={resetUploadModal}
                 disabled={uploading}
               >
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleUpload}
-                disabled={uploading}
-              >
-                {uploading ? 'Uploading...' : 'Upload'}
-                <Upload size={18} />
-              </Button>
+              {uploadStep === 2 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setUploadStep(1)}
+                  disabled={uploading}
+                >
+                  Back
+                </Button>
+              )}
+              {uploadStep === 1 ? (
+                <Button
+                  variant="primary"
+                  onClick={handleParseYaml}
+                  disabled={uploading}
+                >
+                  {uploading ? 'Parsing...' : 'Parse YAML'}
+                  <Upload size={18} />
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  onClick={handleCommitBundle}
+                  disabled={uploading}
+                >
+                  {uploading ? 'Uploading...' : 'Create Pipeline'}
+                  <Check size={18} />
+                </Button>
+              )}
             </Modal.Footer>
           </Modal>
         )}

@@ -32,3 +32,8 @@
   background-color: rgba(107, 107, 107, 0.1);
   color: var(--text-secondary);
 }
+
+.badge-primary {
+  background-color: rgba(102, 126, 234, 0.15);
+  color: var(--primary);
+}

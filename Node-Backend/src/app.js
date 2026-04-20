@@ -10,6 +10,7 @@ const verificationRoutes = require('./routes/verification');
 const merkleProofRoutes = require('./routes/merkleProof');
 const pipelineDataRoutes = require('./routes/pipelineData');
 const blockchainRoutes = require('./routes/blockchain');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/v1/verification', verificationRoutes);
 app.use('/api/v1/merkle-proof', merkleProofRoutes);
 app.use('/api/v1/pipeline-data', pipelineDataRoutes);
 app.use('/api/v1/blockchain', blockchainRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 // Root
 app.get('/', (req, res) => {
@@ -48,6 +50,15 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
+
+// Swagger API docs
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpecs = require('./swagger');
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'CRYVEX API Docs'
+}));
+app.get('/api/docs.json', (req, res) => res.json(swaggerSpecs));
 
 // 404
 app.use((req, res) => {

@@ -20,18 +20,13 @@ import {
     RefreshCw,
     Loader2,
     Info,
-    Database,
-    Hash,
-    Link as LinkIcon,
-    History,
-    ShieldCheck,
-    ShieldX,
-    ChevronDown,
-    ChevronUp
+    StopCircle,
+    Download,
 } from 'lucide-react';
 import { pipelineConfigService } from '../services/pipelineConfig.service';
 import { verificationService, merkleProofService } from '../services/verification.service';
 import { pipelineExecutionService } from '../services/pipelineExecution.service';
+import { generatePipelineVerificationPDF } from '../utils/reportGenerator';
 import './VerifyIntegrity.css';
 
 const VerifyIntegrity = () => {
@@ -50,20 +45,10 @@ const VerifyIntegrity = () => {
     const [selectedVerification, setSelectedVerification] = useState(null);
     const [showResultsModal, setShowResultsModal] = useState(false);
 
-    // Merkle proof section
-    const [verifiedTables, setVerifiedTables] = useState([]);
-    const [loadingTables, setLoadingTables] = useState(false);
-    const [tableResults, setTableResults] = useState({});
-    const [verifyingTable, setVerifyingTable] = useState(null);
-    const [expandedTable, setExpandedTable] = useState(null);
-    const [tableHistory, setTableHistory] = useState({});
-
     useEffect(() => {
         loadConfigs();
         checkAirflowHealth();
-        loadVerifiedTables();
 
-        // Cleanup pollers on unmount
         return () => {
             Object.values(activePollers).forEach(stopFn => stopFn && stopFn());
         };
@@ -75,6 +60,37 @@ const VerifyIntegrity = () => {
             const data = await pipelineConfigService.getAll();
             setConfigs(data);
             setError(null);
+
+            try {
+                const allExecutions = await pipelineExecutionService.getMyExecutions({ limit: 200 });
+                const verifyExecs = allExecutions.filter(e => e.execution_type === 'verify');
+
+                const latestByConfig = {};
+                for (const exec of verifyExecs) {
+                    const cid = exec.pipeline_config_id;
+                    if (!latestByConfig[cid] || new Date(exec.created_at) > new Date(latestByConfig[cid].created_at)) {
+                        latestByConfig[cid] = exec;
+                    }
+                }
+
+                const restoredState = {};
+                for (const [configId, exec] of Object.entries(latestByConfig)) {
+                    restoredState[configId] = {
+                        status: exec.status,
+                        executionId: exec.id,
+                        airflowDagId: exec.airflow_dag_id,
+                        airflowRunId: exec.airflow_run_id,
+                        startedAt: exec.started_at,
+                        completedAt: exec.completed_at,
+                        taskProgress: exec.task_progress ? JSON.parse(exec.task_progress) : null,
+                        error: exec.error_message
+                    };
+                }
+
+                setVerifyingPipelines(prev => ({ ...restoredState, ...prev }));
+            } catch (err) {
+                console.warn('Could not load verification history:', err);
+            }
         } catch (err) {
             console.error('Error loading configs:', err);
             setError('Failed to load pipeline configurations');
@@ -87,34 +103,27 @@ const VerifyIntegrity = () => {
         try {
             const health = await pipelineExecutionService.checkAirflowHealth();
             setAirflowHealthy(health.is_healthy);
-            if (!health.is_healthy) {
-                setShowAirflowWarning(true);
-            }
+            if (!health.is_healthy) setShowAirflowWarning(true);
         } catch (err) {
-            console.error('Error checking Airflow health:', err);
             setAirflowHealthy(false);
             setShowAirflowWarning(true);
         }
     };
 
     const handleVerify = useCallback(async (configId) => {
-        // Check Airflow health first
         if (airflowHealthy === false) {
             setShowAirflowWarning(true);
             return;
         }
 
         try {
-            // Update UI to show loading
             setVerifyingPipelines(prev => ({
                 ...prev,
                 [configId]: { status: 'pending', executionId: null, error: null }
             }));
 
-            // Trigger verification
             const result = await verificationService.triggerVerification(configId);
 
-            // Update with execution ID
             setVerifyingPipelines(prev => ({
                 ...prev,
                 [configId]: {
@@ -126,15 +135,10 @@ const VerifyIntegrity = () => {
                 }
             }));
 
-            // Start polling for status
             const stopPolling = verificationService.pollVerificationStatus(
                 result.execution_id,
                 (statusData, pollError) => {
-                    if (pollError) {
-                        console.error('Polling error:', pollError);
-                        return;
-                    }
-
+                    if (pollError) return;
                     if (statusData) {
                         setVerifyingPipelines(prev => ({
                             ...prev,
@@ -151,32 +155,47 @@ const VerifyIntegrity = () => {
                             }
                         }));
 
-                        // Auto-open results modal when verification completes
                         if (statusData.status === 'success' || statusData.status === 'failed') {
                             setSelectedVerification(statusData);
                             setShowResultsModal(true);
                         }
                     }
                 },
-                3000 // Poll every 3 seconds
+                3000
             );
 
-            // Store the stop function
-            setActivePollers(prev => ({
-                ...prev,
-                [configId]: stopPolling
-            }));
-
+            setActivePollers(prev => ({ ...prev, [configId]: stopPolling }));
         } catch (err) {
-            console.error('Error verifying pipeline:', err);
             const errorMessage = err.response?.data?.detail || err.message || 'Failed to verify pipeline';
-
             setVerifyingPipelines(prev => ({
                 ...prev,
                 [configId]: { status: 'error', error: errorMessage, executionId: null }
             }));
         }
     }, [airflowHealthy]);
+
+    const handleForceStop = useCallback(async (configId) => {
+        const verification = verifyingPipelines[configId];
+        if (!verification?.executionId) return;
+
+        try {
+            await verificationService.forceStop(verification.executionId);
+            const stopFn = activePollers[configId];
+            if (stopFn) stopFn();
+            setActivePollers(prev => { const n = { ...prev }; delete n[configId]; return n; });
+            setVerifyingPipelines(prev => ({
+                ...prev,
+                [configId]: {
+                    ...prev[configId],
+                    status: 'cancelled',
+                    completedAt: new Date().toISOString(),
+                    error: 'Force stopped by user'
+                }
+            }));
+        } catch (err) {
+            console.error('Error force stopping:', err);
+        }
+    }, [verifyingPipelines, activePollers]);
 
     const handleViewResults = async (configId) => {
         const verification = verifyingPipelines[configId];
@@ -191,63 +210,22 @@ const VerifyIntegrity = () => {
         }
     };
 
-    const loadVerifiedTables = async () => {
-        setLoadingTables(true);
+    const handleDownloadPDF = async (configId) => {
+        const verification = verifyingPipelines[configId];
+        if (!verification?.executionId) return;
         try {
-            const data = await merkleProofService.getVerifiedTables();
-            setVerifiedTables(data.tables || []);
+            // Fetch verification details + all merkle_audit tables in parallel
+            const [details, tablesData] = await Promise.all([
+                verificationService.getVerificationResults(verification.executionId),
+                merkleProofService.getVerifiedTables()
+            ]);
+            await generatePipelineVerificationPDF({
+                verification: details,
+                auditTables: tablesData.tables || []
+            });
         } catch (err) {
-            console.error('Error loading verified tables:', err);
-        } finally {
-            setLoadingTables(false);
+            console.error('Error generating PDF:', err);
         }
-    };
-
-    const handleVerifyTable = async (tableName) => {
-        setVerifyingTable(tableName);
-        try {
-            const result = await merkleProofService.verifyTable(tableName);
-            setTableResults(prev => ({ ...prev, [tableName]: result }));
-        } catch (err) {
-            setTableResults(prev => ({
-                ...prev,
-                [tableName]: {
-                    verified: false,
-                    message: err.response?.data?.detail || 'Verification failed',
-                    table_name: tableName
-                }
-            }));
-        } finally {
-            setVerifyingTable(null);
-        }
-    };
-
-    const handleToggleHistory = async (tableName) => {
-        if (expandedTable === tableName) {
-            setExpandedTable(null);
-            return;
-        }
-        setExpandedTable(tableName);
-        if (!tableHistory[tableName]) {
-            try {
-                const data = await merkleProofService.getRootHistory(tableName);
-                setTableHistory(prev => ({ ...prev, [tableName]: data }));
-            } catch (err) {
-                console.error('Error loading history:', err);
-            }
-        }
-    };
-
-    const handleVerifyAllTables = async () => {
-        for (const table of verifiedTables) {
-            await handleVerifyTable(table.table_name);
-        }
-    };
-
-    const truncateHash = (hash) => {
-        if (!hash) return '-';
-        if (hash.length <= 20) return hash;
-        return `${hash.slice(0, 10)}...${hash.slice(-10)}`;
     };
 
     const filteredConfigs = configs.filter(config =>
@@ -269,70 +247,58 @@ const VerifyIntegrity = () => {
         if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
         if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
         if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-        });
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
     const getDomainBadge = (domain) => {
         if (!domain) return null;
-        const domainColors = {
-            banking: 'info',
-            medical: 'success',
-            crypto: 'warning',
-            ecommerce: 'primary',
-        };
-        const variant = domainColors[domain.toLowerCase()] || 'neutral';
-        return <Badge variant={variant}>{domain}</Badge>;
+        const domainColors = { banking: 'info', medical: 'success', crypto: 'warning', ecommerce: 'primary' };
+        return <Badge variant={domainColors[domain.toLowerCase()] || 'neutral'}>{domain}</Badge>;
     };
 
-    const getVerificationState = (configId) => {
-        return verifyingPipelines[configId] || null;
-    };
+    const getVerificationState = (configId) => verifyingPipelines[configId] || null;
 
     const renderVerifyButton = (config) => {
         const verification = getVerificationState(config.id);
         const status = verification?.status;
 
-        // Check if Airflow is not configured
         if (airflowHealthy === false) {
             return (
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled
-                    title="Airflow is not configured or not accessible"
-                >
+                <Button variant="ghost" size="sm" disabled title="Airflow is not accessible">
                     <AlertCircle size={16} />
                     Not Available
                 </Button>
             );
         }
 
-        // Pending/Starting state
         if (status === 'pending') {
             return (
-                <Button variant="secondary" size="sm" disabled className="verifying-btn">
-                    <Loader2 size={16} className="spin" />
-                    Starting...
-                </Button>
+                <div className="verification-running">
+                    <Button variant="secondary" size="sm" disabled className="verifying-btn">
+                        <Loader2 size={16} className="spin" />
+                        Starting...
+                    </Button>
+                    <button className="force-stop-btn" onClick={() => handleForceStop(config.id)} title="Force stop">
+                        <StopCircle size={14} />
+                    </button>
+                </div>
             );
         }
 
-        // Queued state
         if (status === 'queued') {
             return (
-                <Button variant="info" size="sm" disabled className="verifying-btn">
-                    <Clock size={16} />
-                    Queued
-                </Button>
+                <div className="verification-running">
+                    <Button variant="info" size="sm" disabled className="verifying-btn">
+                        <Clock size={16} />
+                        Queued
+                    </Button>
+                    <button className="force-stop-btn" onClick={() => handleForceStop(config.id)} title="Force stop">
+                        <StopCircle size={14} />
+                    </button>
+                </div>
             );
         }
 
-        // Running state
         if (status === 'running') {
             const progress = verification?.taskProgress;
             return (
@@ -340,80 +306,68 @@ const VerifyIntegrity = () => {
                     <Button variant="warning" size="sm" disabled className="verifying-btn">
                         <Loader2 size={16} className="spin" />
                         Verifying
-                        {progress && (
-                            <span className="progress-text">
-                                ({progress.completed}/{progress.total})
-                            </span>
-                        )}
+                        {progress && <span className="progress-text">({progress.completed}/{progress.total})</span>}
                     </Button>
-                    <button
-                        className="view-details-btn"
-                        onClick={() => handleViewResults(config.id)}
-                        title="View verification details"
-                    >
+                    <button className="view-details-btn" onClick={() => handleViewResults(config.id)} title="View details">
                         <Info size={14} />
+                    </button>
+                    <button className="force-stop-btn" onClick={() => handleForceStop(config.id)} title="Force stop">
+                        <StopCircle size={14} />
                     </button>
                 </div>
             );
         }
 
-        // Success state
         if (status === 'success') {
             return (
                 <div className="verification-complete">
-                    <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => handleVerify(config.id)}
-                        className="success-btn"
-                    >
+                    <Button variant="success" size="sm" onClick={() => handleVerify(config.id)} className="success-btn">
                         <CheckCircle size={16} />
                         Verified - Verify Again
                     </Button>
-                    <button
-                        className="view-details-btn"
-                        onClick={() => handleViewResults(config.id)}
-                        title="View verification results"
-                    >
+                    <button className="view-details-btn" onClick={() => handleViewResults(config.id)} title="View results">
                         <Info size={14} />
+                    </button>
+                    <button className="view-details-btn" onClick={() => handleDownloadPDF(config.id)} title="Download PDF Report">
+                        <Download size={14} />
                     </button>
                 </div>
             );
         }
 
-        // Failed state
         if (status === 'failed' || status === 'error') {
             return (
                 <div className="verification-failed">
-                    <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleVerify(config.id)}
-                        className="retry-btn"
-                        title={verification?.error || 'Verification failed'}
-                    >
+                    <Button variant="danger" size="sm" onClick={() => handleVerify(config.id)} className="retry-btn" title={verification?.error || 'Verification failed'}>
                         <XCircle size={16} />
                         Failed - Retry
                     </Button>
-                    <button
-                        className="view-details-btn"
-                        onClick={() => handleViewResults(config.id)}
-                        title="View error details"
-                    >
+                    <button className="view-details-btn" onClick={() => handleViewResults(config.id)} title="View error details">
+                        <Info size={14} />
+                    </button>
+                    <button className="view-details-btn" onClick={() => handleDownloadPDF(config.id)} title="Download PDF Report">
+                        <Download size={14} />
+                    </button>
+                </div>
+            );
+        }
+
+        if (status === 'cancelled') {
+            return (
+                <div className="verification-failed">
+                    <Button variant="ghost" size="sm" onClick={() => handleVerify(config.id)} className="retry-btn">
+                        <StopCircle size={16} />
+                        Stopped - Verify Again
+                    </Button>
+                    <button className="view-details-btn" onClick={() => handleViewResults(config.id)} title="View details">
                         <Info size={14} />
                     </button>
                 </div>
             );
         }
 
-        // Default - Ready to verify
         return (
-            <Button
-                variant="primary"
-                size="sm"
-                onClick={() => handleVerify(config.id)}
-                className="verify-btn"
-            >
+            <Button variant="primary" size="sm" onClick={() => handleVerify(config.id)} className="verify-btn">
                 <Shield size={16} />
                 Verify Integrity
             </Button>
@@ -427,30 +381,28 @@ const VerifyIntegrity = () => {
             return (
                 <div className="pipeline-verification-stats">
                     <div className="verification-stat">
-                        <span className="stat-label">
-                            <Clock size={12} />
-                            Last Verified
-                        </span>
+                        <span className="stat-label"><Clock size={12} /> Last Verified</span>
                         <span className="stat-value">Never</span>
                     </div>
                     <div className="verification-stat">
                         <span className="stat-label">Status</span>
-                        <span className="stat-value">
-                            <Badge variant="neutral">Not Verified</Badge>
-                        </span>
+                        <span className="stat-value"><Badge variant="neutral">Not Verified</Badge></span>
                     </div>
                 </div>
             );
         }
 
+        const isTerminal = ['success', 'failed', 'cancelled'].includes(verification.status);
         return (
             <div className="pipeline-verification-stats">
                 <div className="verification-stat">
                     <span className="stat-label">
                         <Clock size={12} />
-                        Started
+                        {isTerminal ? 'Last Verified' : 'Started'}
                     </span>
-                    <span className="stat-value">{formatDate(verification.startedAt)}</span>
+                    <span className="stat-value">
+                        {formatDate(isTerminal ? (verification.completedAt || verification.startedAt) : verification.startedAt)}
+                    </span>
                 </div>
                 <div className="verification-stat">
                     <span className="stat-label">Status</span>
@@ -473,11 +425,7 @@ const VerifyIntegrity = () => {
                         <p className="page-subtitle">Verify your pipeline data against blockchain Merkle roots</p>
                     </div>
                     <div className="header-actions">
-                        <Button
-                            variant="ghost"
-                            onClick={() => { loadConfigs(); checkAirflowHealth(); }}
-                            title="Refresh"
-                        >
+                        <Button variant="ghost" onClick={() => { loadConfigs(); checkAirflowHealth(); }} title="Refresh">
                             <RefreshCw size={20} />
                         </Button>
                         <Link to="/pipelines/create">
@@ -489,29 +437,18 @@ const VerifyIntegrity = () => {
                     </div>
                 </div>
 
-                {/* Airflow Health Warning */}
                 {showAirflowWarning && !airflowHealthy && (
-                    <Alert
-                        variant="warning"
-                        dismissible
-                        onDismiss={() => setShowAirflowWarning(false)}
-                        className="airflow-warning"
-                    >
+                    <Alert variant="warning" dismissible onDismiss={() => setShowAirflowWarning(false)} className="airflow-warning">
                         <div className="alert-content">
                             <AlertCircle size={20} />
                             <div>
                                 <strong>Airflow Connection Issue</strong>
-                                <p>
-                                    Unable to connect to Airflow. Verification is temporarily unavailable.
-                                    Please ensure Airflow is running and the connection settings are configured correctly.
-                                </p>
+                                <p>Unable to connect to Airflow. Verification is temporarily unavailable.</p>
                             </div>
                         </div>
                     </Alert>
                 )}
 
-                {/* Pipeline Verification */}
-                <div>
                 <div className="verify-integrity-filters">
                     <div className="search-wrapper">
                         <Search size={20} className="search-icon" />
@@ -551,28 +488,23 @@ const VerifyIntegrity = () => {
                     <Card>
                         <div className="error-state">
                             <p>{error}</p>
-                            <Button variant="outline" size="sm" onClick={loadConfigs}>
-                                Try Again
-                            </Button>
+                            <Button variant="outline" size="sm" onClick={loadConfigs}>Try Again</Button>
                         </div>
                     </Card>
                 ) : filteredConfigs.length === 0 ? (
                     <Card>
                         <EmptyState
                             icon={Shield}
-                            title={searchQuery ? "No matching configurations" : "No pipeline configurations"}
+                            title={searchQuery ? 'No matching configurations' : 'No pipeline configurations'}
                             description={
                                 searchQuery
-                                    ? "Try adjusting your search terms"
-                                    : "Create your first pipeline configuration to verify data integrity"
+                                    ? 'Try adjusting your search terms'
+                                    : 'Create your first pipeline configuration to verify data integrity'
                             }
                             action={
                                 !searchQuery && (
                                     <Link to="/pipelines/create">
-                                        <Button variant="primary">
-                                            <Plus size={20} />
-                                            Create Pipeline
-                                        </Button>
+                                        <Button variant="primary"><Plus size={20} /> Create Pipeline</Button>
                                     </Link>
                                 )
                             }
@@ -595,10 +527,7 @@ const VerifyIntegrity = () => {
                                     </p>
                                     <div className="pipeline-stats">
                                         <div className="pipeline-stat">
-                                            <span className="stat-label">
-                                                <Calendar size={12} />
-                                                Created
-                                            </span>
+                                            <span className="stat-label"><Calendar size={12} /> Created</span>
                                             <span className="stat-value">{formatDate(config.created_at)}</span>
                                         </div>
                                         <div className="pipeline-stat">
@@ -606,8 +535,6 @@ const VerifyIntegrity = () => {
                                             <span className="stat-value">{config.version || '-'}</span>
                                         </div>
                                     </div>
-
-                                    {/* Verification Stats */}
                                     {renderVerificationStats(config)}
                                 </Card.Body>
                                 <Card.Footer>
@@ -621,183 +548,6 @@ const VerifyIntegrity = () => {
                     </div>
                 )}
 
-                </div>
-
-                {/* Blockchain Verification Section */}
-                <div className="blockchain-section">
-                    <div className="blockchain-section-header">
-                        <div>
-                            <h2 className="section-title">
-                                <Shield size={24} />
-                                Blockchain Integrity Status
-                            </h2>
-                            <p className="section-subtitle">
-                                Verify table data against Merkle roots stored on the blockchain
-                            </p>
-                        </div>
-                        <div className="section-actions">
-                            <Button variant="outline" size="sm" onClick={loadVerifiedTables} disabled={loadingTables}>
-                                <RefreshCw size={16} className={loadingTables ? 'spin' : ''} />
-                                Refresh
-                            </Button>
-                            {verifiedTables.length > 0 && (
-                                <Button variant="primary" size="sm" onClick={handleVerifyAllTables} disabled={!!verifyingTable}>
-                                    <ShieldCheck size={16} />
-                                    Verify All Tables
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-
-                    {loadingTables ? (
-                        <Card>
-                            <div className="loading-state"><Loader2 size={24} className="spin" /> Loading tables...</div>
-                        </Card>
-                    ) : verifiedTables.length === 0 ? (
-                        <Card>
-                            <div className="empty-tables-state">
-                                <Database size={40} />
-                                <h3>No verified tables yet</h3>
-                                <p>Run an ETL pipeline first, then verify its data integrity here</p>
-                            </div>
-                        </Card>
-                    ) : (
-                        <div className="verified-tables-list">
-                            {verifiedTables.map((table) => {
-                                const result = tableResults[table.table_name];
-                                const isVerifying = verifyingTable === table.table_name;
-                                const isExpanded = expandedTable === table.table_name;
-                                const history = tableHistory[table.table_name];
-
-                                return (
-                                    <Card key={table.table_name} className="table-verify-card">
-                                        <div className="table-verify-row">
-                                            <div className="table-verify-info">
-                                                <div className="table-verify-icon">
-                                                    {result ? (
-                                                        result.verified
-                                                            ? <ShieldCheck size={24} className="icon-verified" />
-                                                            : <ShieldX size={24} className="icon-failed" />
-                                                    ) : (
-                                                        <Database size={24} className="icon-pending" />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <h4 className="table-verify-name">{table.table_name}</h4>
-                                                    <div className="table-verify-meta">
-                                                        <span>{table.run_count} run{table.run_count !== 1 ? 's' : ''}</span>
-                                                        <span className="meta-sep">|</span>
-                                                        <span>{table.latest_row_count} rows</span>
-                                                        <span className="meta-sep">|</span>
-                                                        <span>Last: {table.last_run ? new Date(table.last_run).toLocaleString() : '-'}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="table-verify-actions">
-                                                {result && (
-                                                    <Badge variant={result.verified ? 'success' : 'error'}>
-                                                        {result.verified ? 'Verified' : 'Failed'}
-                                                    </Badge>
-                                                )}
-                                                <Button
-                                                    variant={result?.verified ? 'outline' : 'primary'}
-                                                    size="sm"
-                                                    onClick={() => handleVerifyTable(table.table_name)}
-                                                    disabled={isVerifying}
-                                                >
-                                                    {isVerifying ? <Loader2 size={14} className="spin" /> : <Shield size={14} />}
-                                                    {isVerifying ? 'Verifying...' : 'Verify'}
-                                                </Button>
-                                                <button
-                                                    className="history-btn"
-                                                    onClick={() => handleToggleHistory(table.table_name)}
-                                                    title="View root history"
-                                                >
-                                                    {isExpanded ? <ChevronUp size={16} /> : <History size={16} />}
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Verification Result Details */}
-                                        {result && (
-                                            <div className={`table-verify-result ${result.verified ? 'success' : 'failed'}`}>
-                                                <p className="result-message">{result.message}</p>
-                                                <div className="result-details">
-                                                    <div className="result-detail">
-                                                        <span className="detail-label">
-                                                            <Hash size={12} /> DB Merkle Root
-                                                        </span>
-                                                        <code className="detail-hash" title={result.merkle_root}>
-                                                            {truncateHash(result.merkle_root)}
-                                                        </code>
-                                                    </div>
-                                                    <div className="result-detail">
-                                                        <span className="detail-label">
-                                                            <LinkIcon size={12} /> Blockchain Root
-                                                        </span>
-                                                        <code className="detail-hash" title={result.blockchain_root}>
-                                                            {truncateHash(result.blockchain_root)}
-                                                        </code>
-                                                    </div>
-                                                    <div className="result-detail">
-                                                        <span className="detail-label">Roots Match</span>
-                                                        <Badge variant={result.roots_match ? 'success' : 'error'} size="sm">
-                                                            {result.roots_match ? 'Yes' : 'No'}
-                                                        </Badge>
-                                                    </div>
-                                                    {result.tx_hash && (
-                                                        <div className="result-detail">
-                                                            <span className="detail-label">TX Hash</span>
-                                                            <code className="detail-hash" title={result.tx_hash}>
-                                                                {truncateHash(result.tx_hash)}
-                                                            </code>
-                                                        </div>
-                                                    )}
-                                                    {result.row_count && (
-                                                        <div className="result-detail">
-                                                            <span className="detail-label">Rows Protected</span>
-                                                            <span>{result.row_count}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Root History */}
-                                        {isExpanded && history && (
-                                            <div className="table-history">
-                                                <h5 className="history-title">
-                                                    <History size={14} /> Root History ({history.total_runs} runs)
-                                                </h5>
-                                                {history.history && history.history.length > 0 ? (
-                                                    <div className="history-list">
-                                                        {history.history.slice().reverse().map((entry, i) => (
-                                                            <div key={i} className="history-entry">
-                                                                <span className="history-run">#{entry.run}</span>
-                                                                <code className="history-hash" title={entry.merkle_root}>
-                                                                    {truncateHash(entry.merkle_root)}
-                                                                </code>
-                                                                <span className="history-rows">{entry.row_count} rows</span>
-                                                                <span className="history-date">
-                                                                    {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '-'}
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <p className="no-history">No history available</p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </Card>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                {/* Verification Results Modal */}
                 {showResultsModal && selectedVerification && (
                     <VerificationResultsModal
                         isOpen={showResultsModal}

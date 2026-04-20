@@ -98,9 +98,13 @@ async function getVerificationResults(req, res) {
   const config_name = config ? config.name : null;
   let tasks = null;
 
-  if (syncStatus && [EXECUTION_STATUS.QUEUED, EXECUTION_STATUS.RUNNING].includes(execution.status)) {
-    if (airflowService.isConfigured && execution.airflow_dag_id && execution.airflow_run_id) {
-      try {
+  // Fetch task instances from Airflow whenever we have a valid run ID.
+  // For queued/running: also sync the overall DAG status.
+  // For completed (success/failed): still fetch tasks so the PDF report has table-level details.
+  if (airflowService.isConfigured && execution.airflow_dag_id && execution.airflow_run_id) {
+    try {
+      // Sync DAG-level status only when the execution is still in-progress
+      if (syncStatus && [EXECUTION_STATUS.QUEUED, EXECUTION_STATUS.RUNNING].includes(execution.status)) {
         const dagRun = await airflowService.getDagRun(execution.airflow_dag_id, execution.airflow_run_id);
         const newStatus = airflowService.mapAirflowStateToStatus(dagRun.state || '');
 
@@ -110,29 +114,32 @@ async function getVerificationResults(req, res) {
             execution.completed_at = new Date();
           }
         }
-
-        const taskResult = await airflowService.getTaskInstances(execution.airflow_dag_id, execution.airflow_run_id);
-        const taskInstances = taskResult.task_instances || [];
-        tasks = taskInstances.map(t => ({
-          task_id: t.task_id,
-          state: t.state || 'unknown',
-          start_date: t.start_date,
-          end_date: t.end_date,
-          duration: t.duration,
-          try_number: t.try_number || 1
-        }));
-
-        execution.task_progress = JSON.stringify({
-          total: tasks.length,
-          completed: tasks.filter(t => t.state === 'success').length,
-          failed: tasks.filter(t => t.state === 'failed').length,
-          running: tasks.filter(t => t.state === 'running').length
-        });
-
-        await execution.save();
-      } catch (err) {
-        console.warn('Failed to sync verification status:', err.message);
       }
+
+      // Always fetch per-task details so the PDF can list every table
+      const taskResult = await airflowService.getTaskInstances(execution.airflow_dag_id, execution.airflow_run_id);
+      const taskInstances = taskResult.task_instances || [];
+      tasks = taskInstances.map(t => ({
+        task_id: t.task_id,
+        state: t.state || 'unknown',
+        start_date: t.start_date,
+        end_date: t.end_date,
+        duration: t.duration,
+        try_number: t.try_number || 1
+      }));
+
+      // Update task_progress counts based on fresh task data
+      const verifyTasks = tasks.filter(t => t.task_id && t.task_id.startsWith('verify_'));
+      execution.task_progress = JSON.stringify({
+        total: verifyTasks.length,
+        completed: verifyTasks.filter(t => t.state === 'success').length,
+        failed: verifyTasks.filter(t => t.state === 'failed').length,
+        running: verifyTasks.filter(t => t.state === 'running').length
+      });
+
+      await execution.save();
+    } catch (err) {
+      console.warn('Failed to sync verification status from Airflow:', err.message);
     }
   }
 
